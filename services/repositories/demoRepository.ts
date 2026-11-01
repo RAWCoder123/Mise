@@ -419,6 +419,26 @@ function refreshLocalDemoSalesDate(state: DemoState, restaurantId: string) {
     });
 }
 
+/**
+ * Fail closed before waste activity day windows can silently invent a UTC
+ * calendar day. Emptiness uses `.trim()` only as a Boolean gate; Intl validates
+ * the raw IANA value so Unicode padding cannot invent a usable restaurant
+ * timezone. Do not default omitted zones to `"UTC"`.
+ */
+function requireRestaurantTimeZoneForDemoWasteRecording(
+  timeZone: string | null | undefined
+): string {
+  if (typeof timeZone !== "string" || !timeZone.trim()) {
+    throw new Error("Demo waste recording requires a restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Demo waste recording requires a valid restaurant timezone.");
+  }
+  return timeZone;
+}
+
 function fetchRestaurantFromState(state: DemoState, restaurantId: string) {
   const restaurant = state.restaurants.find((item) => item.id === restaurantId);
   if (!restaurant) throw new Error("Restaurant not found");
@@ -917,6 +937,17 @@ export function createLocalDemoRepository(): MiseRepository {
         throw new Error("Inventory item canonical conversion is not verified");
       }
 
+      // Waste activity day windows need a real restaurant timezone. Validate before
+      // any ledger mutation so an invalid zone cannot leave a half-recorded waste
+      // event without its attention window.
+      const wasteTimeZone =
+        input.eventType === "waste"
+          ? requireRestaurantTimeZoneForDemoWasteRecording(
+              state.restaurants.find((restaurant) => restaurant.id === input.restaurantId)
+                ?.timezone
+            )
+          : null;
+
       const nativeQuantity = input.quantity / conversion;
       const projectedQuantity =
         input.eventType === "count"
@@ -962,9 +993,7 @@ export function createLocalDemoRepository(): MiseRepository {
         item.last_updated = recordedEvent.recordedAt;
       }
       if (projectionApplied && input.eventType === "waste") {
-        const timeZone = state.restaurants.find(
-          (restaurant) => restaurant.id === input.restaurantId
-        )?.timezone ?? "UTC";
+        const timeZone = wasteTimeZone!;
         const effectiveDate = toDateKeyInTimeZone(new Date(input.effectiveAt), timeZone);
         const recentCutoff = addDaysToDateKey(effectiveDate, -6);
         const supersededEventIds = new Set(
