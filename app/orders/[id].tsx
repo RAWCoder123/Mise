@@ -35,6 +35,7 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityBlockerCode
 } from "../../services/domain/purchaseAuthority";
+import { normalizeOrdersDetailEmailReviewHeader } from "../../services/domain/ordersDetailEmailReviewHeaderIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -588,17 +589,37 @@ export default function OrderDraftDetailScreen() {
               <Text style={styles.sectionTitle}>{t("orders.detail.review.title")}</Text>
               <Text style={styles.sectionBody}>{t("orders.detail.review.body")}</Text>
               <View style={styles.emailReviewPanel}>
+                {/*
+                  MISE-005VG: pin email-review from/to/subject display fallback
+                  to ASCII C. Soft-null / Unicode-padded headers fall through to
+                  orders.detail.review.unavailable without inventing clean
+                  mailbox/subject identity via Unicode `.trim()`, and without
+                  letting non-nullish Unicode-only space or empty string bypass
+                  that fallback through the prior `??` rows. Leave body (#1014),
+                  #1013 note.none, #840 write/dirty-check, generatedOrderMessage
+                  trim, #1010 delivery evidence, #708/#913 durable send identity,
+                  and #670 receive discrepancy alone.
+                */}
                 <EmailReviewRow
                   label={t("orders.detail.review.from")}
-                  value={visibleEmailPayload?.from ?? t("orders.detail.review.unavailable")}
+                  value={
+                    normalizeOrdersDetailEmailReviewHeader(visibleEmailPayload?.from) ||
+                    t("orders.detail.review.unavailable")
+                  }
                 />
                 <EmailReviewRow
                   label={t("orders.detail.review.to")}
-                  value={visibleEmailPayload?.to ?? t("orders.detail.review.unavailable")}
+                  value={
+                    normalizeOrdersDetailEmailReviewHeader(visibleEmailPayload?.to) ||
+                    t("orders.detail.review.unavailable")
+                  }
                 />
                 <EmailReviewRow
                   label={t("orders.detail.review.subject")}
-                  value={visibleEmailPayload?.subject ?? t("orders.detail.review.unavailable")}
+                  value={
+                    normalizeOrdersDetailEmailReviewHeader(visibleEmailPayload?.subject) ||
+                    t("orders.detail.review.unavailable")
+                  }
                 />
                 <View style={styles.emailReviewBodyBlock}>
                   <View style={styles.emailReviewBodyHeader}>
