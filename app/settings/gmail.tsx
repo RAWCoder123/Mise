@@ -13,6 +13,7 @@ import { StatusNotice, type StatusNoticeTone } from "../../components/ui/StatusN
 import { colors, icon, iconStroke, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizeGmailSenderEmail } from "../../services/domain/presentationGmailSenderEmailIdentity";
 import {
   connectRestaurantGmail,
   disconnectRestaurantGmail,
@@ -296,7 +297,23 @@ export default function GmailConnectionScreen() {
             </View>
 
             <View style={styles.detailRows}>
-              <ConnectionDetail label={t("settings.gmail.detail.sender")} value={visibleConnection?.sender_email ?? t("settings.gmail.status.notConnected")} />
+              <ConnectionDetail
+                label={t("settings.gmail.detail.sender")}
+                value={
+                  // MISE-005VK: pin Settings/Gmail sender_email display
+                  // fallback to ASCII C. Soft-null / Unicode-padded sender
+                  // mailboxes fall through to settings.gmail.status.notConnected
+                  // without inventing a clean mailbox via Unicode trim, and
+                  // without letting non-nullish Unicode-only space / empty
+                  // string bypass that intentional localized copy via `??`.
+                  // Leave Orders gmail connected-body sender (#candidate),
+                  // Orders detail email-review headers (#1015), Settings
+                  // account email (#966), and miseDomain hard-coded
+                  // "Gmail ready" alone.
+                  normalizeGmailSenderEmail(visibleConnection?.sender_email) ||
+                    t("settings.gmail.status.notConnected")
+                }
+              />
               <ConnectionDetail
                 label={t("settings.gmail.detail.lastVerified")}
                 value={
