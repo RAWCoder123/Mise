@@ -39,6 +39,7 @@ import {
 } from "../../services/domain/purchaseAuthority";
 import type { MessageKey } from "../../i18n/catalog";
 import type { PurchaseDecisionPattern } from "../../services/domain/purchaseDecisionMemory";
+import { normalizeOrdersGmailSenderEmail } from "../../services/domain/presentationOrdersGmailSenderIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -334,7 +335,18 @@ export default function OrdersScreen() {
     ? t("orders.gmail.demo.body")
     : gmailIsConnected
       ? t("orders.gmail.connected.body", {
-          sender: visibleEmailConnection?.sender_email ?? t("orders.gmail.connected.fallbackSender")
+          // MISE-005VL: pin Orders Gmail connected-body sender_email display
+          // fallback to ASCII C. Soft-null / Unicode-padded sender mailboxes
+          // fall through to orders.gmail.connected.fallbackSender without
+          // inventing a clean mailbox via Unicode trim, and without letting
+          // non-nullish Unicode-only space / empty string bypass that
+          // intentional localized copy via `??`. Leave Settings/Gmail
+          // sender_email (#1019), Orders detail email-review headers (#1015),
+          // Settings account email (#966), and miseDomain hard-coded
+          // "Gmail ready" alone.
+          sender:
+            normalizeOrdersGmailSenderEmail(visibleEmailConnection?.sender_email) ||
+            t("orders.gmail.connected.fallbackSender")
         })
       : canConnectGmail
         ? t("orders.gmail.connect.body")
