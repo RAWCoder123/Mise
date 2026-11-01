@@ -24,6 +24,7 @@ import {
   sendSupplierOrderEmail,
   updateSupplierOrder
 } from "../../services/miseService";
+import { restaurantTimeZoneForDeliveryEvidence } from "../../services/domain/deliveryEvidenceDate";
 import type {
   SupplierDeliveryStatus,
   SupplierOrderDeliveryEvidence
@@ -535,10 +536,11 @@ export default function OrderDraftDetailScreen() {
                     />
                     <Text style={styles.deliveryEvidenceMeta}>
                       {t("orders.detail.deliveryEvidence.meta", {
-                        date: formatDate(evidence.receivedAt, {
-                          dateStyle: "medium",
-                          timeZone: restaurant?.timezone ?? "UTC"
-                        }),
+                        date: formatDeliveryEvidenceReceivedDate(
+                          formatDate,
+                          evidence.receivedAt,
+                          restaurant?.timezone
+                        ),
                         timing: t(
                           `orders.detail.deliveryEvidence.timing.${evidence.timing}` as MessageKey
                         )
@@ -817,6 +819,24 @@ function sameReviewedSendContent(left: SupplierEmailPayload, right: SupplierEmai
     left.contentVersion === right.contentVersion &&
     Boolean(left.contentFingerprint) &&
     left.contentFingerprint === right.contentFingerprint;
+}
+
+// Delivery evidence timestamps must read in the restaurant timezone. Missing
+// or invalid IANA names fail closed to "—" instead of inventing a UTC (or
+// host-local) calendar day via `restaurant?.timezone ?? "UTC"`.
+function formatDeliveryEvidenceReceivedDate(
+  formatDate: ReturnType<typeof useLocale>["formatDate"],
+  receivedAt: string,
+  timeZone: string | null | undefined
+): string {
+  try {
+    return formatDate(receivedAt, {
+      dateStyle: "medium",
+      timeZone: restaurantTimeZoneForDeliveryEvidence(timeZone)
+    });
+  } catch {
+    return "—";
+  }
 }
 
 function deliveryEvidenceTone(status: SupplierDeliveryStatus): BadgeTone {
