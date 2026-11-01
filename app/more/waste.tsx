@@ -25,6 +25,7 @@ import type {
   WasteAnalysisStatus,
   WasteAnalysisTrend
 } from "../../services/domain/wasteAnalysis";
+import { normalizeWasteItemName } from "../../services/domain/presentationWasteItemNameIdentity";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -241,7 +242,22 @@ export default function WasteScreen() {
                   <View key={event.id} style={styles.recentRow}>
                     <View style={styles.recentHeader}>
                       <Text style={styles.recentTitle}>
-                        {event.itemName ?? t("waste.event.unknownItem")}
+                        {
+                          // MISE-005VJ: pin waste recent-event itemName display
+                          // fallback to ASCII C. Soft-null / Unicode-padded item
+                          // names fall through to waste.event.unknownItem without
+                          // inventing clean item identity via Unicode `.trim()`,
+                          // and without letting non-nullish Unicode-only space or
+                          // empty string bypass that fallback through the prior
+                          // `??` row. Leave Inventory detail title item_name
+                          // (#1017), Settings/Gmail sender_email (#candidate),
+                          // Orders gmail fallbackSender (#candidate), Orders
+                          // detail title supplier_name (#1016), Home StatusNotice
+                          // approval title (#1011), and setup.fallback.* (#1012)
+                          // alone.
+                          normalizeWasteItemName(event.itemName) ||
+                            t("waste.event.unknownItem")
+                        }
                       </Text>
                       <Text style={styles.recentCost}>
                         {event.estimatedCost === null
@@ -302,7 +318,14 @@ function wasteActionCopy(
     keep_logging: "waste.actionCopy.keep_logging"
   };
   return t(actionKeys[analysis.recommendedAction], {
-    item: item?.itemName ?? t("waste.event.unknownItem")
+    // MISE-005VJ: same waste.event.unknownItem ASCII C soft-null as recent-
+    // event titles. Soft-null / Unicode-padded top-item names fall through to
+    // the intentional localized unknown-item copy without inventing clean
+    // item identity via Unicode `.trim()`, and without letting non-nullish
+    // Unicode-only space or empty string bypass that fallback through the
+    // prior `??` row.
+    item:
+      normalizeWasteItemName(item?.itemName) || t("waste.event.unknownItem")
   });
 }
 
