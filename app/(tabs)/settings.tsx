@@ -40,6 +40,7 @@ import {
   fetchRestaurantOpsProfile,
   fetchSuppliers
 } from "../../services/miseService";
+import { normalizeSettingsProfileRestaurantName } from "../../services/domain/presentationSettingsProfileRestaurantNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -286,7 +287,22 @@ export default function SettingsScreen() {
         <SettingsSection title={t("settings.section.restaurant")}>
           <OperationalRow
             density="menu"
-            title={restaurant?.name ?? t("settings.profile.noRestaurant")}
+            title={
+              // MISE-005VM: pin Settings profile restaurant-name display
+              // fallback to ASCII C. Soft-null / Unicode-padded restaurant
+              // names fall through to settings.profile.noRestaurant without
+              // inventing clean restaurant identity from NBSP/em-space
+              // padding, and without letting Unicode-only space or empty
+              // string bypass that fallback through the prior `??` row.
+              // Leave Insights/Today restaurant-name tips (#969 / #968),
+              // branding initials (#967), Settings account email (#966),
+              // Team directory (#965), More/Settings profile name (#964),
+              // durable requireRestaurantName (#844), workspace switcher
+              // item.name / cuisine_type metaFallback, and sales-import
+              // restaurant?.name ?? common.notSet alone.
+              normalizeSettingsProfileRestaurantName(restaurant?.name) ||
+              t("settings.profile.noRestaurant")
+            }
             value={localizedRole ?? undefined}
             icon={<Store size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
           />
