@@ -35,6 +35,7 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityBlockerCode
 } from "../../services/domain/purchaseAuthority";
+import { normalizeOrdersDetailTitleSupplierName } from "../../services/domain/ordersDetailTitleSupplierNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -441,7 +442,20 @@ export default function OrderDraftDetailScreen() {
 
   return (
     <Screen
-      title={visibleOrder?.supplier_name ?? t("orders.detail.title")}
+      title={
+        // MISE-005VH: pin Orders detail Screen title supplier_name display
+        // fallback to ASCII C. Soft-null / Unicode-padded supplier names fall
+        // through to orders.detail.title without inventing clean supplier
+        // identity via Unicode `.trim()`, and without letting non-nullish
+        // Unicode-only space or empty string bypass that fallback through the
+        // prior `??` row. Leave email-review headers (#1015), body (#1014),
+        // note.none (#1013), #840 write/dirty-check, generatedOrderMessage
+        // trim, #1010 delivery evidence, #708/#913 durable send identity,
+        // #670 receive discrepancy, and other supplier_name a11y/action
+        // interpolations in this screen alone.
+        normalizeOrdersDetailTitleSupplierName(visibleOrder?.supplier_name) ||
+        t("orders.detail.title")
+      }
       subtitle={
         visibleOrder
           ? (canEditDraft
