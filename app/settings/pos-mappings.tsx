@@ -12,6 +12,7 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizePosMappingsMenuItemName } from "../../services/domain/presentationPosMappingsMenuItemNameIdentity";
 import {
   fetchPosMappingReviewQueue,
   reviewPosCatalogMapping,
@@ -203,7 +204,19 @@ export default function PosMappingsScreen() {
                   <View style={styles.suggestion}>
                     <Text style={styles.suggestionLabel}>{t("pos.mappings.suggestionLabel")}</Text>
                     <Text style={styles.suggestionValue}>
-                      {mapping.suggestedMenuItemName ?? t("common.none")}
+                      {/*
+                        MISE-005VP: soft-null Unicode-padded / control-bearing /
+                        empty suggestedMenuItemName so localized common.none
+                        owns the intentional empty state. Leave choice-list
+                        menuItem.name pass-through, Settings workspace cuisine
+                        (#1023), Sales Import / Settings hub restaurant-name
+                        (#1022/#1021), Gmail sender tips (#1020/#1019), waste
+                        itemName (#1018), Inventory detail item_name (#1017),
+                        Orders detail supplier_name (#1016), and Home
+                        ApprovalsSection card.title alone.
+                      */}
+                      {normalizePosMappingsMenuItemName(mapping.suggestedMenuItemName) ||
+                        t("common.none")}
                     </Text>
                     <Text style={styles.suggestionBody}>{t("pos.mappings.suggestionBody")}</Text>
                   </View>
@@ -222,7 +235,17 @@ export default function PosMappingsScreen() {
                   >
                     <View style={styles.mappingCopy}>
                       <Text style={styles.choiceLabel}>{t("pos.mappings.selectedLabel")}</Text>
-                      <Text style={styles.choiceValue}>{selectedMenuItem?.name ?? t("pos.mappings.chooseItem")}</Text>
+                      <Text style={styles.choiceValue}>
+                        {/*
+                          MISE-005VP: soft-null Unicode-padded / control-bearing /
+                          empty selectedMenuItem.name so localized
+                          pos.mappings.chooseItem owns the intentional empty
+                          state. Same ownership boundary as suggestedMenuItemName
+                          above; leave choice-list menuItem.name pass-through alone.
+                        */}
+                        {normalizePosMappingsMenuItemName(selectedMenuItem?.name) ||
+                          t("pos.mappings.chooseItem")}
+                      </Text>
                     </View>
                     <ChevronDown size={icon.row} color={colors.muted} strokeWidth={iconStroke} />
                   </Pressable>
