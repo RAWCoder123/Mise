@@ -24,10 +24,30 @@ import {
   normalizeDemoSupplierDisplayName
 } from "./demoSupplierIdentity";
 
+/**
+ * Fail closed before demo operating-date / count-evidence dating can silently invent
+ * a UTC calendar day, and before a missing restaurant timezone can invent
+ * `DEMO_RESTAURANT_TIME_ZONE`. Emptiness uses `.trim()` only as a Boolean gate;
+ * Intl validates the raw IANA value so Unicode padding cannot invent a usable
+ * restaurant timezone. Do not default omitted zones to the demo timezone or UTC.
+ */
+function requireRestaurantTimeZoneForDemoOperatingDate(
+  timeZone: string | undefined
+): string {
+  if (typeof timeZone !== "string" || !timeZone.trim()) {
+    throw new Error("Demo operating date requires a restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Demo operating date requires a valid restaurant timezone.");
+  }
+  return timeZone;
+}
+
 function demoTimeZone(state: DemoState, restaurantId: string) {
-  return (
-    state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.timezone ??
-    DEMO_RESTAURANT_TIME_ZONE
+  return requireRestaurantTimeZoneForDemoOperatingDate(
+    state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.timezone
   );
 }
 

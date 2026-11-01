@@ -8,6 +8,7 @@ import {
   dismissRecommendationInDemoState,
   markClaimedSupplierOrderSentInDemoState,
   markSupplierOrderSentInDemoState,
+  rebuildInsights,
   rebuildPurchaseRecommendations,
   repairDemoState,
   undoRecommendationInDemoState,
@@ -22,7 +23,9 @@ import {
 } from "../services/domain/miseActions";
 import type { InventoryEvent } from "../services/domain/inventoryLedger";
 import { demoSupplierIdForLegacyName } from "../services/demo/demoSupplierIdentity";
+import { DEMO_RESTAURANT_TIME_ZONE } from "../services/demo/replaceableDemoData";
 import type { PurchaseRecommendation, SupplierOrder } from "../types/mise";
+import { toDateKeyInTimeZone } from "../utils/format";
 
 const FIXED_NOW = new Date("2026-07-15T16:00:00.000Z");
 const WORKFLOW_SUPPLIER_NAME = "Fresh Poultry Supply";
@@ -529,4 +532,111 @@ test("already-current demo state does not report a migration", () => {
     repaired.state.purchaseRecommendations.map((entry) => entry.supplier_order_id),
     seed.purchaseRecommendations.map((entry) => entry.supplier_order_id)
   );
+});
+
+test("demo operating date fails closed on omitted, Unicode-padded, or invalid restaurant timezones", () => {
+  // At 2026-10-31T22:30:00.000Z a valid Asia/Tokyo operating date is 2026-11-01.
+  // Missing restaurant previously invented DEMO America/New_York → 2026-10-31.
+  // Empty / invalid / em-space-padded zones invented UTC calendar day 2026-10-31 via
+  // toDateKeyInTimeZone's catch fallback, so a Tokyo-day sale was excluded from
+  // rebuildInsights sales insights.
+  const when = new Date("2026-10-31T22:30:00.000Z");
+  assert.equal(DEMO_RESTAURANT_TIME_ZONE, "America/New_York");
+  assert.equal(toDateKeyInTimeZone(when, "Asia/Tokyo"), "2026-11-01");
+  assert.equal(toDateKeyInTimeZone(when, "America/New_York"), "2026-10-31");
+  assert.equal(toDateKeyInTimeZone(when, "UTC"), "2026-10-31");
+
+  const RealDate = Date;
+  class FakeDate extends RealDate {
+    constructor(value?: string | number | Date) {
+      if (arguments.length === 0) {
+        super(when.getTime());
+        return;
+      }
+      super(value as string | number | Date);
+    }
+    static now() {
+      return when.getTime();
+    }
+  }
+
+  function seedWithTimezone(timezone: string | null) {
+    const state = createInitialDemoState("Toast", undefined, when);
+    if (timezone === null) {
+      state.restaurants = state.restaurants.filter(
+        (restaurant) => restaurant.id !== DEMO_RESTAURANT_ID
+      );
+    } else {
+      const restaurant = state.restaurants.find(
+        (entry) => entry.id === DEMO_RESTAURANT_ID
+      );
+      assert.ok(restaurant);
+      restaurant.timezone = timezone;
+    }
+    const template =
+      state.posSales.find((sale) => sale.restaurant_id === DEMO_RESTAURANT_ID) ??
+      state.posSales[0]!;
+    state.posSales = [
+      {
+        ...template,
+        id: "sale_tz_proof",
+        restaurant_id: DEMO_RESTAURANT_ID,
+        sale_date: "2026-11-01",
+        item_name: "Timezone Proof Dish",
+        quantity_sold: 999
+      }
+    ];
+    for (let dayOffset = 1; dayOffset <= 7; dayOffset += 1) {
+      const day = String(24 + dayOffset).padStart(2, "0");
+      state.posSales.push({
+        ...template,
+        id: `hist_${dayOffset}`,
+        restaurant_id: DEMO_RESTAURANT_ID,
+        sale_date: `2026-10-${day}`,
+        item_name: "Timezone Proof Dish",
+        quantity_sold: 10
+      });
+    }
+    state.insights = [];
+    return state;
+  }
+
+  (globalThis as { Date: DateConstructor }).Date = FakeDate as DateConstructor;
+  try {
+    const tokyo = seedWithTimezone("Asia/Tokyo");
+    rebuildInsights(tokyo, DEMO_RESTAURANT_ID);
+    assert.ok(
+      tokyo.insights.some(
+        (insight) =>
+          insight.insight_type === "sales" &&
+          /Timezone Proof Dish/i.test(insight.title)
+      ),
+      "valid Tokyo operating date 2026-11-01 should see the Tokyo-day sale"
+    );
+
+    const padded = "\u2003Asia/Tokyo\u2003";
+    assert.equal(padded.trim(), "Asia/Tokyo");
+    assert.throws(
+      () => rebuildInsights(seedWithTimezone(padded), DEMO_RESTAURANT_ID),
+      /valid restaurant timezone/i
+    );
+    assert.throws(
+      () => rebuildInsights(seedWithTimezone("\u2003"), DEMO_RESTAURANT_ID),
+      /timezone/i
+    );
+    assert.throws(
+      () => rebuildInsights(seedWithTimezone(""), DEMO_RESTAURANT_ID),
+      /timezone/i
+    );
+    assert.throws(
+      () => rebuildInsights(seedWithTimezone(null), DEMO_RESTAURANT_ID),
+      /timezone/i
+    );
+    assert.throws(
+      () => rebuildInsights(seedWithTimezone("Not/A_Real_Zone"), DEMO_RESTAURANT_ID),
+      /valid restaurant timezone/i
+    );
+  } finally {
+    (globalThis as { Date: DateConstructor }).Date = RealDate;
+  }
 });
