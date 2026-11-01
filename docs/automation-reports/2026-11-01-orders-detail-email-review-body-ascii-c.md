@@ -38,10 +38,11 @@ display body.
 
 ## Verification
 
-- Focused `tests/ordersDetailEmailReviewBodyAsciiC.test.ts`
-- `npm run typecheck`
-- `npm run security:static` / `security:backend`
-- `npm test` (report totals in PR)
+- Focused `tests/ordersDetailEmailReviewBodyAsciiC.test.ts` — 5/5
+- `npm run typecheck` — pass
+- `npm run security:static` / `security:backend` — pass
+- `npm test` — 688 total / 681 pass / 0 fail / 7 cancelled
+  (inherited `recalculationCycles`)
 
 ## Ownership
 
