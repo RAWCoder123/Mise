@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { normalizePresentationSetupFallbackLabel } from "../../services/domain/presentationSetupFallbackLabelIdentity";
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -618,7 +619,15 @@ function InventoryDraftRow({
           placeholderTextColor={colors.faint}
         />
         <IconPress
-          label={t("setup.remove.inventory", { item: item.name || t("setup.fallback.inventory") })}
+          // MISE-005VD: pin remove / a11y fallback labels to ASCII C.
+          // Soft-null / Unicode-padded names fall through to setup.fallback.*
+          // without inventing clean identity via Unicode `.trim()`, and without
+          // letting raw truthy Unicode-only space bypass that fallback.
+          label={t("setup.remove.inventory", {
+            item:
+              normalizePresentationSetupFallbackLabel(item.name) ||
+              t("setup.fallback.inventory")
+          })}
           onPress={onRemove}
         />
       </View>
@@ -674,7 +683,12 @@ function SupplierDraftRow({
           placeholderTextColor={colors.faint}
         />
         <IconPress
-          label={t("setup.remove.supplier", { supplier: supplier.name || t("setup.fallback.supplier") })}
+          // MISE-005VD: pin remove / a11y fallback labels to ASCII C.
+          label={t("setup.remove.supplier", {
+            supplier:
+              normalizePresentationSetupFallbackLabel(supplier.name) ||
+              t("setup.fallback.supplier")
+          })}
           onPress={onRemove}
         />
       </View>
@@ -714,7 +728,12 @@ function RecipeDraftEditor({
           placeholderTextColor={colors.faint}
         />
         <IconPress
-          label={t("setup.remove.recipe", { recipe: recipe.dishName || t("setup.fallback.recipe") })}
+          // MISE-005VD: pin remove / a11y fallback labels to ASCII C.
+          label={t("setup.remove.recipe", {
+            recipe:
+              normalizePresentationSetupFallbackLabel(recipe.dishName) ||
+              t("setup.fallback.recipe")
+          })}
           onPress={onRemove}
         />
       </View>
@@ -722,7 +741,10 @@ function RecipeDraftEditor({
         <View key={ingredient.id} style={styles.ingredientRow}>
           <TextInput
             accessibilityLabel={t("setup.field.recipeIngredientAccessibility", {
-              recipe: recipe.dishName || t("setup.fallback.recipe")
+              // MISE-005VD: pin remove / a11y fallback labels to ASCII C.
+              recipe:
+                normalizePresentationSetupFallbackLabel(recipe.dishName) ||
+                t("setup.fallback.recipe")
             })}
             value={ingredient.itemName}
             onChangeText={(itemName) => updateIngredient(ingredient.id, { itemName })}
@@ -732,7 +754,10 @@ function RecipeDraftEditor({
           />
           <TextInput
             accessibilityLabel={t("setup.field.quantityAccessibility", {
-              ingredient: ingredient.itemName || t("setup.fallback.ingredient")
+              // MISE-005VD: pin remove / a11y fallback labels to ASCII C.
+              ingredient:
+                normalizePresentationSetupFallbackLabel(ingredient.itemName) ||
+                t("setup.fallback.ingredient")
             })}
             value={ingredient.quantity}
             onChangeText={(quantity) => updateIngredient(ingredient.id, { quantity })}
@@ -743,7 +768,10 @@ function RecipeDraftEditor({
           />
           <TextInput
             accessibilityLabel={t("setup.field.unitAccessibility", {
-              ingredient: ingredient.itemName || t("setup.fallback.ingredient")
+              // MISE-005VD: pin remove / a11y fallback labels to ASCII C.
+              ingredient:
+                normalizePresentationSetupFallbackLabel(ingredient.itemName) ||
+                t("setup.fallback.ingredient")
             })}
             value={ingredient.unit}
             onChangeText={(unit) => updateIngredient(ingredient.id, { unit })}
@@ -755,7 +783,10 @@ function RecipeDraftEditor({
       ))}
       <Pressable
         accessibilityLabel={t("setup.addIngredientAccessibility", {
-          recipe: recipe.dishName || t("setup.fallback.recipe")
+          // MISE-005VD: pin remove / a11y fallback labels to ASCII C.
+          recipe:
+            normalizePresentationSetupFallbackLabel(recipe.dishName) ||
+            t("setup.fallback.recipe")
         })}
         onPress={() => onChange({ ingredients: [...recipe.ingredients, createRecipeIngredientDraft()] })}
         style={styles.inlineAdd}
