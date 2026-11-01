@@ -31,6 +31,25 @@ function demoTimeZone(state: DemoState, restaurantId: string) {
   );
 }
 
+/**
+ * Fail closed before `nextDateKeyInTimeZone` can silently invent a UTC next-day
+ * delivery date, and before a missing restaurant timezone can invent
+ * `DEMO_RESTAURANT_TIME_ZONE`. Emptiness uses `.trim()` only as a Boolean gate;
+ * Intl validates the raw IANA value so Unicode padding cannot invent a usable
+ * restaurant timezone. Do not default omitted zones to the demo timezone or UTC.
+ */
+function requireRestaurantTimeZoneForDemoDraftUpsert(timeZone: string | undefined): string {
+  if (typeof timeZone !== "string" || !timeZone.trim()) {
+    throw new Error("Demo draft upsert requires a restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Demo draft upsert requires a valid restaurant timezone.");
+  }
+  return timeZone;
+}
+
 function demoOperatingDate(state: DemoState, restaurantId: string) {
   return toDateKeyInTimeZone(new Date(), demoTimeZone(state, restaurantId));
 }
@@ -227,9 +246,14 @@ export function approveRecommendationInDemoState(
     }
   }
   if (!order) {
-    const timeZone =
-      state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.timezone ??
-      DEMO_RESTAURANT_TIME_ZONE;
+    // Fail closed before nextDateKeyInTimeZone / toDateKeyInTimeZone can invent a
+    // UTC next-day delivery date, and before a missing restaurant timezone can
+    // invent DEMO_RESTAURANT_TIME_ZONE. Emptiness uses .trim() only as a Boolean
+    // gate; Intl validates the raw IANA value so Unicode padding cannot invent a
+    // usable restaurant timezone.
+    const timeZone = requireRestaurantTimeZoneForDemoDraftUpsert(
+      state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.timezone
+    );
     const now = new Date();
     order = {
       id: createId("order"),
