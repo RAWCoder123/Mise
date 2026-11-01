@@ -23,6 +23,7 @@ import {
 import type { InventoryEvent } from "../services/domain/inventoryLedger";
 import { demoSupplierIdForLegacyName } from "../services/demo/demoSupplierIdentity";
 import type { PurchaseRecommendation, SupplierOrder } from "../types/mise";
+import { nextDateKeyInTimeZone } from "../utils/format";
 
 const FIXED_NOW = new Date("2026-07-15T16:00:00.000Z");
 const WORKFLOW_SUPPLIER_NAME = "Fresh Poultry Supply";
@@ -529,4 +530,117 @@ test("already-current demo state does not report a migration", () => {
     repaired.state.purchaseRecommendations.map((entry) => entry.supplier_order_id),
     seed.purchaseRecommendations.map((entry) => entry.supplier_order_id)
   );
+});
+
+test("demo draft upsert fails closed on omitted, Unicode-padded, or invalid restaurant timezones", () => {
+  // At 2026-10-31T22:30:00.000Z a valid Asia/Tokyo next delivery date is 2026-11-02.
+  // Missing restaurant previously invented DEMO America/New_York → 2026-11-01.
+  // Empty / invalid / em-space-padded zones invented UTC next-day 2026-11-01 via
+  // toDateKeyInTimeZone's catch fallback.
+  const when = new Date("2026-10-31T22:30:00.000Z");
+  const RealDate = Date;
+  class FakeDate extends RealDate {
+    constructor(value?: string | number | Date) {
+      if (arguments.length === 0) {
+        super(when.getTime());
+        return;
+      }
+      super(value as string | number | Date);
+    }
+    static now() {
+      return when.getTime();
+    }
+  }
+
+  function seedWithTimezone(timezone: string | null) {
+    const state = emptyWorkflowState();
+    if (timezone === null) {
+      state.restaurants = state.restaurants.filter(
+        (restaurant) => restaurant.id !== DEMO_RESTAURANT_ID
+      );
+    } else {
+      const restaurant = state.restaurants.find(
+        (entry) => entry.id === DEMO_RESTAURANT_ID
+      );
+      assert.ok(restaurant);
+      restaurant.timezone = timezone;
+    }
+    const pending = recommendation(state, "timezone-proof", {
+      item_name: "Timezone Proof Item"
+    });
+    state.purchaseRecommendations.push(pending);
+    return { state, pendingId: pending.id };
+  }
+
+  (globalThis as { Date: DateConstructor }).Date = FakeDate as DateConstructor;
+  try {
+    const tokyo = seedWithTimezone("Asia/Tokyo");
+    const tokyoResult = approveRecommendationInDemoState(
+      tokyo.state,
+      DEMO_RESTAURANT_ID,
+      tokyo.pendingId
+    );
+    assert.equal(tokyoResult.order?.delivery_date, "2026-11-02");
+    assert.equal(nextDateKeyInTimeZone(when, "UTC"), "2026-11-01");
+    assert.equal(nextDateKeyInTimeZone(when, "America/New_York"), "2026-11-01");
+
+    const padded = "\u2003Asia/Tokyo\u2003";
+    assert.equal(padded.trim(), "Asia/Tokyo");
+    const paddedSeed = seedWithTimezone(padded);
+    assert.throws(
+      () =>
+        approveRecommendationInDemoState(
+          paddedSeed.state,
+          DEMO_RESTAURANT_ID,
+          paddedSeed.pendingId
+        ),
+      /valid restaurant timezone/i
+    );
+
+    const whitespaceOnly = seedWithTimezone("\u2003");
+    assert.throws(
+      () =>
+        approveRecommendationInDemoState(
+          whitespaceOnly.state,
+          DEMO_RESTAURANT_ID,
+          whitespaceOnly.pendingId
+        ),
+      /timezone/i
+    );
+
+    const empty = seedWithTimezone("");
+    assert.throws(
+      () =>
+        approveRecommendationInDemoState(
+          empty.state,
+          DEMO_RESTAURANT_ID,
+          empty.pendingId
+        ),
+      /timezone/i
+    );
+
+    const missingRestaurant = seedWithTimezone(null);
+    assert.throws(
+      () =>
+        approveRecommendationInDemoState(
+          missingRestaurant.state,
+          DEMO_RESTAURANT_ID,
+          missingRestaurant.pendingId
+        ),
+      /timezone/i
+    );
+
+    const invalid = seedWithTimezone("Not/A_Real_Zone");
+    assert.throws(
+      () =>
+        approveRecommendationInDemoState(
+          invalid.state,
+          DEMO_RESTAURANT_ID,
+          invalid.pendingId
+        ),
+      /valid restaurant timezone/i
+    );
+  } finally {
+    (globalThis as { Date: DateConstructor }).Date = RealDate;
+  }
 });
