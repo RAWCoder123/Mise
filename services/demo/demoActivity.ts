@@ -98,6 +98,26 @@ export function appendDemoSupplierOrderActivity(
   return null;
 }
 
+/**
+ * Fail closed before seed waste-activity day windows can silently invent a UTC
+ * calendar day. Emptiness uses `.trim()` only as a Boolean gate; Intl validates
+ * the raw IANA value so Unicode padding cannot invent a usable restaurant
+ * timezone. Do not default omitted / missing zones to `"UTC"`.
+ */
+function requireRestaurantTimeZoneForDemoActivitySeed(
+  timeZone: string | null | undefined
+): string {
+  if (typeof timeZone !== "string" || !timeZone.trim()) {
+    throw new Error("Demo activity seed requires a restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Demo activity seed requires a valid restaurant timezone.");
+  }
+  return timeZone;
+}
+
 export function seedDemoActivityFromState(state: DemoState) {
   if (!Array.isArray(state.activityEvents)) state.activityEvents = [];
   const shouldSeedExistingOperationalActivity = state.activityEvents.length === 0;
@@ -120,7 +140,9 @@ export function seedDemoActivityFromState(state: DemoState) {
         entry.restaurant_id === event.restaurantId && entry.id === event.inventoryItemId
     );
     if (!item) continue;
-    const timeZone = restaurantTimeZones.get(event.restaurantId) ?? "UTC";
+    const timeZone = requireRestaurantTimeZoneForDemoActivitySeed(
+      restaurantTimeZones.get(event.restaurantId)
+    );
     const eventDate = toDateKeyInTimeZone(new Date(event.effectiveAt), timeZone);
     const windowStart = addDaysToDateKey(eventDate, -6);
     const distinctWasteDays = new Set(
