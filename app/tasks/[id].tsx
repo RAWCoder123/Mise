@@ -18,6 +18,7 @@ import {
   canRestaurantRoleCompleteSharedTask,
   type RestaurantTask
 } from "../../services/domain/restaurantTasks";
+import { normalizeTasksSharedDetailNoInstructions } from "../../services/domain/presentationTasksSharedDetailNoInstructionsIdentity";
 import {
   canRestaurantRoleActOnTodayTask,
   type OperationalTodayTask,
@@ -31,6 +32,7 @@ import {
 } from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { captureMiseError } from "../../services/telemetry";
+
 
 function BackAction() {
   const { t } = useLocale();
@@ -283,7 +285,16 @@ export default function TaskDetailScreen() {
 
           <View style={styles.instructions}>
             <Text style={styles.sectionTitle}>{t("tasks.instructions.title")}</Text>
-            <Text style={styles.instructionsBody}>{sharedTask.detail ?? t("tasks.shared.noInstructions")}</Text>
+            {/*
+              MISE-005VQ: soft-null Unicode-padded / empty / control-bearing
+              detail so tasks.shared.noInstructions owns the intentional empty
+              state without inventing clean identity via Unicode trim, and
+              without letting non-nullish Unicode-only space bypass via ??.
+            */}
+            <Text style={styles.instructionsBody}>
+              {normalizeTasksSharedDetailNoInstructions(sharedTask.detail) ||
+                t("tasks.shared.noInstructions")}
+            </Text>
           </View>
 
           {sharedTask.checklist.length > 0 ? (
