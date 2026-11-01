@@ -43,6 +43,7 @@ import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
 } from "../../services/domain/wasteAnalysis";
+import { normalizeWasteItemName } from "../../services/domain/presentationWasteItemNameIdentity";
 
 function BackAction() {
   const { t } = useLocale();
@@ -632,7 +633,18 @@ function dailyWasteActionCopy(
     keep_logging: "waste.actionCopy.keep_logging"
   };
   return t(keys[analysis.recommendedAction], {
-    item: item?.itemName ?? t("waste.event.unknownItem")
+    // MISE-005VJ: pin daily-report waste action-copy itemName display
+    // fallback to ASCII C (same waste.event.unknownItem soft-null as
+    // app/more/waste.tsx). Soft-null / Unicode-padded top-item names fall
+    // through to the intentional localized unknown-item copy without
+    // inventing clean item identity via Unicode `.trim()`, and without
+    // letting non-nullish Unicode-only space or empty string bypass that
+    // fallback through the prior `??` row. Leave Inventory detail title
+    // item_name (#1017), Settings/Gmail sender_email (#candidate), Orders
+    // gmail fallbackSender (#candidate), and sibling presentation tips
+    // alone.
+    item:
+      normalizeWasteItemName(item?.itemName) || t("waste.event.unknownItem")
   });
 }
 
