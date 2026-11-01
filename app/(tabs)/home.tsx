@@ -27,6 +27,7 @@ import type {
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
+import { normalizeHomeStatusApprovalTitle } from "../../services/domain/homeStatusApprovalTitleIdentity";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
   classifyOperationalTodayTaskTiming,
@@ -341,6 +342,11 @@ function RestaurantStatusCard({
   const topRisk = brief.restaurantStatus.topRisk?.trim();
   const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
+  // MISE-005VC: pin StatusNotice approval title to ASCII C.
+  // Soft-null / Unicode-padded titles fall through to the localized status
+  // key without inventing a clean headline via Unicode `.trim()`, and without
+  // letting raw truthy Unicode-only space bypass that fallback.
+  const approvalTitle = normalizeHomeStatusApprovalTitle(primaryApproval?.title);
 
   return (
     <StatusNotice
@@ -349,7 +355,7 @@ function RestaurantStatusCard({
       title={
         primaryMenuRisk
           ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
-          : primaryApproval?.title || t(statusKey)
+          : approvalTitle || t(statusKey)
       }
       message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
       onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
