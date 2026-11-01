@@ -40,6 +40,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
+import { normalizeOrdersDetailNoteNone } from "../../services/domain/ordersDetailNoteNoneIdentity";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type {
   RestaurantEmailConnection,
@@ -697,7 +698,17 @@ export default function OrderDraftDetailScreen() {
             ) : (
               <View style={styles.sentNote}>
                 <Text style={styles.sentNoteText}>
-                  {visibleOrder.operator_note || t("orders.detail.note.none")}
+                  {/*
+                    MISE-005VE: pin sent-note display fallback to ASCII C.
+                    Soft-null / Unicode-padded notes fall through to
+                    orders.detail.note.none without inventing clean identity via
+                    Unicode `.trim()`, and without letting raw truthy
+                    Unicode-only space bypass that fallback. Leave #840 write /
+                    dirty-check, generatedOrderMessage trim, #1010 delivery
+                    evidence, and email-review body alone.
+                  */}
+                  {normalizeOrdersDetailNoteNone(visibleOrder.operator_note) ||
+                    t("orders.detail.note.none")}
                 </Text>
               </View>
             )}
