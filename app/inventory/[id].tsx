@@ -30,6 +30,7 @@ import {
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
+import { normalizeInventoryDetailItemName } from "../../services/domain/presentationInventoryDetailItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -346,7 +347,20 @@ export default function InventoryDetailScreen() {
 
   return (
     <Screen
-      title={item?.item_name ?? t("inventory.detail.title")}
+      title={
+        // MISE-005VI: pin Inventory detail Screen title item_name display
+        // fallback to ASCII C. Soft-null / Unicode-padded item names fall
+        // through to inventory.detail.title without inventing clean item
+        // identity via Unicode `.trim()`, and without letting non-nullish
+        // Unicode-only space or empty string bypass that fallback through the
+        // prior `??` row. Leave waste itemName (#candidate), Settings/Gmail
+        // sender_email (#candidate), Orders gmail fallbackSender (#candidate),
+        // Orders detail title supplier_name (#1016), Home StatusNotice
+        // approval title (#1011), setup.fallback.* (#1012), and this screen's
+        // add-action a11y item.item_name interpolation alone.
+        normalizeInventoryDetailItemName(item?.item_name) ||
+        t("inventory.detail.title")
+      }
       subtitle={item ? `${item.supplier_name} · ${item.category}` : t("inventory.detail.subtitle")}
       loading={loading}
       keyboardAware
