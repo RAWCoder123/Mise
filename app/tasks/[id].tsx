@@ -18,6 +18,7 @@ import {
   canRestaurantRoleCompleteSharedTask,
   type RestaurantTask
 } from "../../services/domain/restaurantTasks";
+import { normalizeTasksSharedChecklistItem } from "../../services/domain/presentationTasksSharedChecklistItemIdentity";
 import {
   canRestaurantRoleActOnTodayTask,
   type OperationalTodayTask,
@@ -31,6 +32,7 @@ import {
 } from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { captureMiseError } from "../../services/telemetry";
+// MISE-005VR: checklist label/type → tasks.shared.checklistItem soft-null.
 
 function BackAction() {
   const { t } = useLocale();
@@ -305,7 +307,17 @@ export default function TaskDetailScreen() {
                       ? <CheckCircle2 size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
                       : <Circle size={icon.inline} color={colors.borderStrong} strokeWidth={iconStroke} />}
                     <Text style={[styles.checkText, isChecked && styles.checkTextDone]}>
-                      {String(entry.label ?? entry.type ?? t("tasks.shared.checklistItem", { number: index + 1 }))}
+                      {/*
+                        MISE-005VR: soft-null label then type so Unicode-only
+                        space / empty string cannot bypass
+                        tasks.shared.checklistItem via ??, and em-space
+                        padding cannot invent a clean checklist label.
+                      */}
+                      {String(
+                        normalizeTasksSharedChecklistItem(entry.label) ||
+                          normalizeTasksSharedChecklistItem(entry.type) ||
+                          t("tasks.shared.checklistItem", { number: index + 1 })
+                      )}
                     </Text>
                   </Pressable>
                 );
