@@ -14,6 +14,7 @@ import { colors, icon, iconStroke, radii, spacing, typography } from "../../cons
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { DEMO_SETUP_POS_SALES_PLACEHOLDER } from "../../services/demo/demoSetupData";
+import { normalizeSalesImportRestaurantName } from "../../services/domain/presentationSalesImportRestaurantNameIdentity";
 import {
   saveRestaurantSetup,
   validateImportedPosSalesRows
@@ -105,7 +106,19 @@ export default function SalesImportScreen() {
           eyebrow={t("salesImport.hero.eyebrow")}
           title={t("salesImport.hero.title")}
           body={t("salesImport.hero.body")}
-          meta={restaurant?.name ?? t("common.notSet")}
+          meta={
+            // MISE-005VN: ASCII C soft-null before intentional localized
+            // common.notSet. Leave Settings hub restaurant-name (#1021),
+            // Insights/Today restaurant-name (#969 / #968), branding
+            // initials (#967), Settings account email (#966), Team
+            // directory (#965), More/Settings profile name (#964), durable
+            // requireRestaurantName (#844), workspace switcher item.name /
+            // cuisine_type metaFallback, Orders gmail sender (#1020),
+            // Settings/Gmail sender_email (#1019), and Home ApprovalsSection
+            // card titles alone.
+            normalizeSalesImportRestaurantName(restaurant?.name) ||
+            t("common.notSet")
+          }
           tone="leaf"
           icon={<Upload size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />}
           stats={[
