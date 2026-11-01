@@ -40,6 +40,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
+import { normalizeOrdersDetailEmailReviewBody } from "../../services/domain/ordersDetailEmailReviewBodyIdentity";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type {
   RestaurantEmailConnection,
@@ -617,7 +618,18 @@ export default function OrderDraftDetailScreen() {
                     ) : null}
                   </View>
                   <Text selectable style={styles.orderMessage}>
-                    {visibleEmailPayload?.body || t("orders.detail.review.unavailable")}
+                    {/*
+                      MISE-005VF: pin email-review body display fallback to ASCII C.
+                      Soft-null / Unicode-padded bodies fall through to
+                      orders.detail.review.unavailable without inventing clean
+                      identity via Unicode `.trim()`, and without letting raw
+                      truthy Unicode-only space bypass that fallback. Leave
+                      from/to/subject ?? rows, #1013 note.none, #840 write /
+                      dirty-check, generatedOrderMessage trim, #1010 delivery
+                      evidence, and #670 receive discrepancy alone.
+                    */}
+                    {normalizeOrdersDetailEmailReviewBody(visibleEmailPayload?.body) ||
+                      t("orders.detail.review.unavailable")}
                   </Text>
                 </View>
               </View>
