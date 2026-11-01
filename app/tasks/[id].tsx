@@ -18,6 +18,7 @@ import {
   canRestaurantRoleCompleteSharedTask,
   type RestaurantTask
 } from "../../services/domain/restaurantTasks";
+import { normalizeTasksSharedEvidence } from "../../services/domain/presentationTasksSharedEvidenceIdentity";
 import {
   canRestaurantRoleActOnTodayTask,
   type OperationalTodayTask,
@@ -31,6 +32,7 @@ import {
 } from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { captureMiseError } from "../../services/telemetry";
+// MISE-005VS: evidence note/label/type → tasks.shared.evidence soft-null.
 
 function BackAction() {
   const { t } = useLocale();
@@ -325,7 +327,18 @@ export default function TaskDetailScreen() {
               <Text style={styles.instructionsBody}>{sharedTask.completionResult}</Text>
               {sharedTask.completionEvidence.map((entry, index) => (
                 <Text key={index} style={styles.evidenceText}>
-                  {String(entry.note ?? entry.label ?? entry.type ?? t("tasks.shared.evidence"))}
+                  {/*
+                    MISE-005VS: soft-null note then label then type so
+                    Unicode-only space / empty string cannot bypass
+                    tasks.shared.evidence via ??, and em-space padding
+                    cannot invent a clean evidence body.
+                  */}
+                  {String(
+                    normalizeTasksSharedEvidence(entry.note) ||
+                      normalizeTasksSharedEvidence(entry.label) ||
+                      normalizeTasksSharedEvidence(entry.type) ||
+                      t("tasks.shared.evidence")
+                  )}
                 </Text>
               ))}
               {canReopen ? (
