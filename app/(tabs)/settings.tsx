@@ -40,12 +40,14 @@ import {
   fetchRestaurantOpsProfile,
   fetchSuppliers
 } from "../../services/miseService";
+import { normalizeSettingsWorkspaceCuisine } from "../../services/domain/presentationSettingsWorkspaceCuisineIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
+
 import type {
   DemoReadinessSummary,
   RestaurantEmailConnection,
@@ -337,7 +339,20 @@ export default function SettingsScreen() {
                     <Building2 size={icon.row} color={selected ? colors.accentDark : colors.muted} strokeWidth={iconStroke} />
                     <View style={styles.workspaceCopy}>
                       <Text style={styles.workspaceName}>{item.name}</Text>
-                      <Text style={styles.workspaceMeta}>{item.cuisine_type ?? t("settings.workspace.metaFallback")}</Text>
+                      <Text style={styles.workspaceMeta}>
+                        {/*
+                          MISE-005VO: soft-null Unicode-padded / control-bearing /
+                          empty cuisine_type so localized metaFallback owns the
+                          intentional empty state. Leave workspace item.name,
+                          Settings hub restaurant-name (#1021), Sales Import
+                          hero restaurant-name (#1022), Insights cuisineFallback
+                          (#969), branding English cuisine (#967), Orders gmail
+                          sender (#1020), Settings/Gmail sender_email (#1019),
+                          and POS mappings names alone.
+                        */}
+                        {normalizeSettingsWorkspaceCuisine(item.cuisine_type) ||
+                          t("settings.workspace.metaFallback")}
+                      </Text>
                     </View>
                     {selected ? <Check size={icon.row} color={colors.success} strokeWidth={iconStroke} /> : null}
                   </Pressable>
