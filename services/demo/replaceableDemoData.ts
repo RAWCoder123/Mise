@@ -1072,8 +1072,39 @@ function applyDemoPreset(
   return applyDefaultDemoDataset(state, provider, createdAt, nowDate);
 }
 
-function applyDefaultDemoDataset(state: DemoState, provider: PosProvider | null, createdAt: string, nowDate: Date) {
-  const timeZone = state.restaurants[0]?.timezone ?? DEMO_RESTAURANT_TIME_ZONE;
+/**
+ * Fail closed before demo reference-dataset sales/delivery calendar days can
+ * silently invent a UTC or America/New_York day. Emptiness uses `.trim()` only
+ * as a Boolean gate; Intl validates the raw IANA value so Unicode padding
+ * cannot invent a usable restaurant timezone. Do not default omitted zones to
+ * `DEMO_RESTAURANT_TIME_ZONE` or `"UTC"`.
+ */
+function requireRestaurantTimeZoneForDemoDataset(
+  timeZone: string | undefined
+): string {
+  if (typeof timeZone !== "string" || !timeZone.trim()) {
+    throw new Error("Demo dataset rebuild requires a restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Demo dataset rebuild requires a valid restaurant timezone.");
+  }
+  return timeZone;
+}
+
+export function applyDefaultDemoDataset(
+  state: DemoState,
+  provider: PosProvider | null,
+  createdAt: string,
+  nowDate: Date
+) {
+  // Fail closed before toDateKeyInTimeZone can invent a UTC calendar day for
+  // omitted, empty, Unicode-padded, or otherwise invalid restaurant timezones,
+  // and before `?? DEMO_RESTAURANT_TIME_ZONE` can invent America/New_York.
+  const timeZone = requireRestaurantTimeZoneForDemoDataset(
+    state.restaurants[0]?.timezone
+  );
   const today = toDateKeyInTimeZone(nowDate, timeZone);
   const tomorrow = toDateKeyInTimeZone(addDays(nowDate, 1), timeZone);
   const supplierId = (displayName: string) =>
