@@ -408,8 +408,28 @@ async function readReadyDemoState(restaurantId: string = DEMO_RESTAURANT_ID) {
   });
 }
 
+/**
+ * Fail closed before rolling demo POS `sale_date` stamps can silently invent a
+ * UTC calendar day. Emptiness uses `.trim()` only as a Boolean gate; Intl
+ * validates the raw IANA value so Unicode padding cannot invent a usable
+ * restaurant timezone. Do not default omitted zones to `"UTC"`.
+ */
+function requireRestaurantTimeZoneForDemoSalesDate(timeZone: string | undefined): string {
+  if (typeof timeZone !== "string" || !timeZone.trim()) {
+    throw new Error("Demo sales date refresh requires a restaurant timezone.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+  } catch {
+    throw new Error("Demo sales date refresh requires a valid restaurant timezone.");
+  }
+  return timeZone;
+}
+
 function refreshLocalDemoSalesDate(state: DemoState, restaurantId: string) {
-  const timeZone = state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.timezone ?? "UTC";
+  const timeZone = requireRestaurantTimeZoneForDemoSalesDate(
+    state.restaurants.find((restaurant) => restaurant.id === restaurantId)?.timezone
+  );
   const today = toDateKeyInTimeZone(new Date(), timeZone);
   state.posSales
     .filter((sale) => sale.restaurant_id === restaurantId)
