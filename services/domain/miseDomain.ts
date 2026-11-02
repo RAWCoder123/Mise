@@ -42,6 +42,7 @@ import {
   type InventoryCountEvidenceMap
 } from "./inventoryCountAuthority";
 import { buildRecordedSalesTrend } from "./salesTrends";
+import { normalizeSetupReadinessGmailSender } from "./presentationSetupReadinessGmailSenderIdentity";
 import {
   recipeDemandKey,
   saleDemandKey,
@@ -1846,7 +1847,20 @@ export function buildSetupReadinessSummary({
       : null
   ].filter((item): item is string => Boolean(item));
   const missingSuppliers = supplierIds.length === 0 ? ["supplier list"] : [];
-  const missingEmailSender = emailConnection?.status !== "connected" || !emailConnection.sender_email;
+  // MISE-005VW: pin setup-readiness Email sender_email to ASCII C.
+  // Soft-null Unicode-padded / empty sender mailboxes before the truthy
+  // missing gate and `?? "Gmail ready"` detail so connected-but-padded
+  // rows fail closed to "Gmail sender not linked" without inventing a
+  // clean mailbox via Unicode trim, and without letting non-nullish
+  // Unicode-only space / empty string bypass the intentional hard-coded
+  // empty states. Leave Settings/Gmail display (#1019), Orders gmail
+  // connected-body (#1020), buildSupplierEmailPayload `from`, and
+  // pilot-readiness sender_email?.trim() alone.
+  const setupReadinessSenderEmail = normalizeSetupReadinessGmailSender(
+    emailConnection?.sender_email
+  );
+  const missingEmailSender =
+    emailConnection?.status !== "connected" || !setupReadinessSenderEmail;
 
   const rawSteps = [
     {
@@ -1876,7 +1890,9 @@ export function buildSetupReadinessSummary({
     {
       id: "email" as const,
       label: "Email",
-      detail: missingEmailSender ? "Gmail sender not linked" : emailConnection.sender_email ?? "Gmail ready",
+      detail: missingEmailSender
+        ? "Gmail sender not linked"
+        : setupReadinessSenderEmail ?? "Gmail ready",
       missing: missingEmailSender ? ["restaurant Gmail sender"] : []
     }
   ];
