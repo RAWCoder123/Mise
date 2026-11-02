@@ -21,6 +21,7 @@ import {
   saveSupplierRecipient
 } from "../../services/miseService";
 import type { SupplierRecipientDirectoryEntry } from "../../services/domain/supplierRecipients";
+import { normalizeSuppliersSettingsRecipientEmail } from "../../services/domain/presentationSuppliersSettingsRecipientEmailIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -233,7 +234,19 @@ export default function SupplierRecipientsScreen() {
   }
 
   const configuredCount = useMemo(
-    () => visibleEntries.filter((entry) => Boolean(entry.email)).length,
+    () =>
+      // MISE-005VX: pin Settings suppliers stored recipient-email
+      // configured-count / Ready badge / read-only notConfigured display to
+      // ASCII C. Soft-null / Unicode-padded emails fall through to needsEmail
+      // + copy.notConfigured without inventing clean mailbox identity from
+      // NBSP/em-space padding, and without letting truthy Unicode-only space
+      // or empty string bypass those fallbacks through the prior Boolean / `??`
+      // rows. Leave draft-email save/equality (#690), display-name (#691),
+      // Settings/Gmail sender_email (#1019), Orders gmail sender (#1020),
+      // setup-readiness Gmail ready (#1031), and durable recipient writers alone.
+      visibleEntries.filter((entry) =>
+        Boolean(normalizeSuppliersSettingsRecipientEmail(entry.email))
+      ).length,
     [visibleEntries]
   );
 
@@ -294,16 +307,20 @@ export default function SupplierRecipientsScreen() {
                 const saving = savingKeys.has(key);
                 const emailUnchanged = draftEmail.trim().toLowerCase() === (entry.email ?? "").toLowerCase();
                 const nameUnchanged = canonicalSupplierName(draftName) === entry.supplierName;
+                // MISE-005VX: soft-null stored recipient email before Ready /
+                // notConfigured presentation (see configuredCount comment).
+                const recipientEmail = normalizeSuppliersSettingsRecipientEmail(entry.email);
+                const hasRecipientEmail = Boolean(recipientEmail);
                 return (
                   <View
                     key={key}
                     style={[styles.recipientRow, index > 0 && styles.dividedRow]}
                   >
                     <View style={styles.recipientHeader}>
-                      <IconBadge tone={entry.email ? "leaf" : "warning"}>
+                      <IconBadge tone={hasRecipientEmail ? "leaf" : "warning"}>
                         <Mail
                           size={icon.emphasis}
-                          color={entry.email ? colors.success : colors.warning}
+                          color={hasRecipientEmail ? colors.success : colors.warning}
                           strokeWidth={iconStroke}
                         />
                       </IconBadge>
@@ -314,8 +331,8 @@ export default function SupplierRecipientsScreen() {
                         </Text>
                       </View>
                       <Badge
-                        label={entry.email ? copy.configured : copy.needsEmail}
-                        tone={entry.email ? "success" : "warning"}
+                        label={hasRecipientEmail ? copy.configured : copy.needsEmail}
+                        tone={hasRecipientEmail ? "success" : "warning"}
                       />
                     </View>
 
@@ -379,10 +396,16 @@ export default function SupplierRecipientsScreen() {
                         />
                       </View>
                     ) : (
-                      <View accessible accessibilityLabel={copy.readOnlyEmailAccessibility(entry.supplierName, entry.email)}>
+                      <View
+                        accessible
+                        accessibilityLabel={copy.readOnlyEmailAccessibility(
+                          entry.supplierName,
+                          recipientEmail
+                        )}
+                      >
                         <Text style={styles.readOnlyLabel}>{copy.emailLabel}</Text>
-                        <Text style={[styles.readOnlyEmail, !entry.email && styles.missingEmail]}>
-                          {entry.email ?? copy.notConfigured}
+                        <Text style={[styles.readOnlyEmail, !hasRecipientEmail && styles.missingEmail]}>
+                          {recipientEmail || copy.notConfigured}
                         </Text>
                       </View>
                     )}
