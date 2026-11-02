@@ -13,6 +13,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { autonomyLevelLabel } from "../../services/domain/operationalStatus";
 import type { RestaurantAutonomyRule } from "../../services/domain/restaurantAutonomy";
+import { normalizeAutonomySubtitleRestaurantName } from "../../services/domain/presentationAutonomySubtitleRestaurantNameIdentity";
 import {
   createSafeDefaultAutonomyRules,
   fetchAutonomyRules,
@@ -169,10 +170,29 @@ export default function AutonomySettingsScreen() {
 
   const visible = hubReady ? rules : [];
 
+  // MISE-005WI: pin Autonomy subtitle restaurant.name to ASCII C.
+  // Soft-null / Unicode-padded restaurant names fall through to
+  // autonomy.subtitle.none without inventing clean restaurant identity from
+  // NBSP/em-space padding, and without letting Unicode-only space or empty
+  // string bypass that fallback through the prior always-interpolate-name row.
+  // Leave Memory subtitle restaurant.name (#1042), Activity History subtitle
+  // restaurant.name (#1041), Support/Privacy/Count/Insights subtitleRestaurant,
+  // Settings profile restaurant name (#1021), Sales Import hero restaurant
+  // name (#1022), Today title restaurant-name (#968), branding initials (#967),
+  // Home greeting restaurant.name, Ask Mise restaurant.name, Settings workspace
+  // item.name, and Home ApprovalsSection card titles alone.
+  const autonomySubtitleRestaurantName = normalizeAutonomySubtitleRestaurantName(
+    restaurant?.name
+  );
+
   return (
     <Screen
       title={t("autonomy.title")}
-      subtitle={restaurant ? t("autonomy.subtitle", { restaurant: restaurant.name }) : t("autonomy.subtitle.none")}
+      subtitle={
+        restaurant && autonomySubtitleRestaurantName
+          ? t("autonomy.subtitle", { restaurant: autonomySubtitleRestaurantName })
+          : t("autonomy.subtitle.none")
+      }
       loading={loading}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
