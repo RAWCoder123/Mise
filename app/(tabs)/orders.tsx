@@ -43,6 +43,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeOrdersReviewSupplierName } from "../../services/domain/presentationOrdersReviewSupplierNameIdentity";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
 import { trackMiseEvent } from "../../services/telemetry";
@@ -623,7 +624,19 @@ export default function OrdersScreen() {
                   <View style={styles.pendingCopy}>
                     <Text style={styles.pendingTitle} numberOfLines={1}>
                       {groupedRecommendations.length === 1
-                        ? groupedRecommendations[0]?.supplierName
+                        ? // MISE-005WQ: pin Orders review pending-title
+                          // recommendation supplier_name to ASCII C. Soft-null /
+                          // Unicode-padded names fall through to
+                          // orders.review.supplierName.none without inventing
+                          // clean supplier identity from NBSP/em-space padding,
+                          // and without letting Unicode-only space or empty
+                          // string render a blank-looking pending title. Leave
+                          // SupplierDraftCard (#1050), Orders detail title
+                          // (#1016), miseDomain draft-order (#1034), and
+                          // orders.notice.copied interpolations alone.
+                          normalizeOrdersReviewSupplierName(
+                            groupedRecommendations[0]?.supplierName
+                          ) || t("orders.review.supplierName.none")
                         : t("orders.review.title")}
                     </Text>
                     <Text style={styles.pendingBody}>
@@ -702,14 +715,28 @@ export default function OrdersScreen() {
                   supplierId,
                   supplierName,
                   recommendations: supplierRecommendations
-                }) => (
+                }) => {
+                  // MISE-005WQ: pin Orders review-lane supplier header
+                  // recommendation supplier_name to ASCII C. Soft-null /
+                  // Unicode-padded names fall through to
+                  // orders.review.supplierName.none without inventing clean
+                  // supplier identity from NBSP/em-space padding, and without
+                  // letting Unicode-only space or empty string render a
+                  // blank-looking supplierName. Leave SupplierDraftCard
+                  // (#1050), Orders detail title (#1016), miseDomain
+                  // draft-order (#1034), and RecommendationDecisionRow
+                  // quantity/item chrome alone.
+                  const displaySupplierName =
+                    normalizeOrdersReviewSupplierName(supplierName) ||
+                    t("orders.review.supplierName.none");
+                  return (
                   <SectionSurface key={supplierId} padding="none">
                     <View style={styles.supplierHeader}>
                       <View style={styles.supplierIcon}>
                         <Truck size={icon.inline} color={colors.success} strokeWidth={iconStroke} />
                       </View>
                       <View style={styles.supplierHeaderCopy}>
-                        <Text style={styles.supplierName}>{supplierName}</Text>
+                        <Text style={styles.supplierName}>{displaySupplierName}</Text>
                         <Text style={styles.supplierMeta}>
                           {t(
                             supplierRecommendations.length === 1
@@ -745,7 +772,8 @@ export default function OrdersScreen() {
                       />
                     ))}
                   </SectionSurface>
-                ))}
+                  );
+                })}
               </View>
             )
           ) : null}
