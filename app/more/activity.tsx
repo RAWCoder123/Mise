@@ -20,6 +20,7 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivitySubtitleRestaurantName } from "../../services/domain/presentationActivitySubtitleRestaurantNameIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -111,10 +112,28 @@ export default function ActivityHistoryScreen() {
 
   const visible = loadedRestaurantId === restaurant?.id ? events : [];
 
+  // MISE-005WG: pin Activity subtitle restaurant.name to ASCII C. Soft-null /
+  // Unicode-padded restaurant names fall through to activity.subtitle.none
+  // without inventing clean restaurant identity from NBSP/em-space padding, and
+  // without letting Unicode-only space or empty string bypass that fallback
+  // through the prior always-interpolate-name row. Leave Support/Privacy/Count/
+  // Insights subtitleRestaurant, Restaurant Memory / Autonomy subtitle
+  // restaurant.name, Settings profile restaurant name (#1021), Sales Import
+  // hero restaurant name (#1022), Today title restaurant-name (#968), branding
+  // initials (#967), Settings workspace item.name, and Home ApprovalsSection
+  // card titles alone.
+  const activitySubtitleRestaurantName = normalizeActivitySubtitleRestaurantName(
+    restaurant?.name
+  );
+
   return (
     <Screen
       title={t("activity.title")}
-      subtitle={restaurant ? t("activity.subtitle", { restaurant: restaurant.name }) : t("activity.subtitle.none")}
+      subtitle={
+        restaurant && activitySubtitleRestaurantName
+          ? t("activity.subtitle", { restaurant: activitySubtitleRestaurantName })
+          : t("activity.subtitle.none")
+      }
       loading={loading}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
