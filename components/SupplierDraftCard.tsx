@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, conceptTypography, icon, iconStroke, radii } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { presentSupportedSupplierOrderStatus } from "../services/domain/operationalStatus";
+import { normalizeSupplierDraftCardSupplierName } from "../services/domain/presentationSupplierDraftCardSupplierNameIdentity";
 import type { SupplierOrder } from "../types/mise";
 import { buildSupplierDraftPresentation } from "../utils/orderPresentation";
 import { Badge } from "./ui/Badge";
@@ -68,13 +69,24 @@ export function SupplierDraftCard({
     ? formatCurrency(presentation.estimatedTotalCents / 100)
     : null;
   const showSendButton = Boolean(isDraft && sendIsVisible && sendAction);
+  // MISE-005WP: pin SupplierDraftCard supplier_name to ASCII C.
+  // Soft-null / Unicode-padded names fall through to
+  // orders.card.supplier.none without inventing clean supplier identity from
+  // NBSP/em-space padding, and without letting Unicode-only space or empty
+  // string render a blank-looking supplierName. Leave Orders detail title
+  // supplier_name (#1016), miseDomain draft-order supplier_name (#1034),
+  // orderPresentation line labels (#887), and supplier draft line labels
+  // (#972) alone.
+  const supplierName =
+    normalizeSupplierDraftCardSupplierName(order.supplier_name) ||
+    t("orders.card.supplier.none");
 
   return (
     <View style={[styles.card, isDraft && styles.cardDraft]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t("orders.card.openAccessibility", {
-          supplier: order.supplier_name,
+          supplier: supplierName,
           status: statusLabel
         })}
         onPress={onOpen}
@@ -82,7 +94,7 @@ export function SupplierDraftCard({
       >
         <View style={styles.supplierLine}>
           <Text style={styles.supplierName} numberOfLines={1}>
-            {order.supplier_name}
+            {supplierName}
           </Text>
           <Badge label={statusLabel} tone={statusTone} uppercase />
         </View>
@@ -137,7 +149,7 @@ export function SupplierDraftCard({
         <Button
           title={isDraft ? t("orders.card.action.editDraft") : t("orders.card.action.open")}
           accessibilityLabel={t("orders.card.openAccessibility", {
-            supplier: order.supplier_name,
+            supplier: supplierName,
             status: statusLabel
           })}
           variant="secondary"
@@ -148,7 +160,7 @@ export function SupplierDraftCard({
           <Button
             title={busy ? resolvedBusyLabel : resolvedSendLabel}
             accessibilityLabel={sendAccessibilityLabel ?? t("orders.card.markSentAccessibility", {
-              supplier: order.supplier_name
+              supplier: supplierName
             })}
             accessibilityHint={!sendIsAvailable ? sendDisabledHint : undefined}
             accessibilityState={{ disabled: sendIsDisabled }}
@@ -171,8 +183,8 @@ export function SupplierDraftCard({
             title={isDraft ? t("orders.card.action.review") : t("orders.card.copy")}
             accessibilityLabel={
               isDraft
-                ? t("orders.card.reviewAccessibility", { supplier: order.supplier_name })
-                : t("orders.card.copyAccessibility", { supplier: order.supplier_name })
+                ? t("orders.card.reviewAccessibility", { supplier: supplierName })
+                : t("orders.card.copyAccessibility", { supplier: supplierName })
             }
             variant={isDraft ? "primary" : "soft"}
             onPress={isDraft ? onOpen : onCopy}
