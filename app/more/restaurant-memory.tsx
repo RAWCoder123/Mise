@@ -12,6 +12,7 @@ import { colors, conceptTypography, icon, iconStroke, radii } from "../../consta
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { RestaurantMemory } from "../../services/domain/restaurantMemory";
+import { normalizeMemorySubtitleRestaurantName } from "../../services/domain/presentationMemorySubtitleRestaurantNameIdentity";
 import {
   convertRestaurantMemoryToSafeRule,
   fetchRestaurantMemories,
@@ -149,10 +150,28 @@ export default function RestaurantMemoryScreen() {
 
   const visible = hubReady ? memories : [];
 
+  // MISE-005WH: pin Restaurant Memory subtitle restaurant.name to ASCII C.
+  // Soft-null / Unicode-padded restaurant names fall through to
+  // memory.subtitle.none without inventing clean restaurant identity from
+  // NBSP/em-space padding, and without letting Unicode-only space or empty
+  // string bypass that fallback through the prior always-interpolate-name row.
+  // Leave Autonomy subtitle restaurant.name, Activity History subtitle
+  // restaurant.name (#1041), Support/Privacy/Count/Insights subtitleRestaurant,
+  // Settings profile restaurant name (#1021), Sales Import hero restaurant
+  // name (#1022), Today title restaurant-name (#968), branding initials (#967),
+  // Settings workspace item.name, and Home ApprovalsSection card titles alone.
+  const memorySubtitleRestaurantName = normalizeMemorySubtitleRestaurantName(
+    restaurant?.name
+  );
+
   return (
     <Screen
       title={t("memory.title")}
-      subtitle={restaurant ? t("memory.subtitle", { restaurant: restaurant.name }) : t("memory.subtitle.none")}
+      subtitle={
+        restaurant && memorySubtitleRestaurantName
+          ? t("memory.subtitle", { restaurant: memorySubtitleRestaurantName })
+          : t("memory.subtitle.none")
+      }
       loading={loading}
       action={
         <ActionIcon accessibilityLabel={t("common.back")} onPress={() => router.back()}>
