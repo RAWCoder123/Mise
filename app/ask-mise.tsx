@@ -15,6 +15,7 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
 import { DEMO_DATASET } from "../services/demoData";
+import { normalizeAskMiseGreetingRestaurantName } from "../services/domain/presentationAskMiseGreetingRestaurantNameIdentity";
 import {
   answerAskMise,
   fetchInsights,
@@ -142,6 +143,19 @@ export default function AskMiseScreen() {
     if (!visibleSummary || !restaurant || seededRef.current) return;
     seededRef.current = true;
     const greetingName = user?.name?.trim().split(/\s+/)[0] || t("ask.greeting.fallbackName");
+    // MISE-005WK: pin Ask Mise greeting restaurant.name to ASCII C.
+    // Soft-null / Unicode-padded restaurant names fall through to
+    // ask.greeting.body.none without inventing clean restaurant identity from
+    // NBSP/em-space padding, and without letting Unicode-only space or empty
+    // string interpolate a blank-looking restaurant into ask.greeting.body.
+    // Leave Home greeting restaurant.name (#1044), Autonomy subtitle
+    // restaurant.name (#1043), Memory subtitle restaurant.name (#1042),
+    // Activity History subtitle restaurant.name (#1041), Support/Privacy/Count/
+    // Insights subtitleRestaurant, Settings profile restaurant name (#1021),
+    // Sales Import hero restaurant name (#1022), Today title restaurant-name
+    // (#968), branding initials (#967), Settings workspace item.name, team
+    // subtitle restaurant.name, and Home ApprovalsSection card titles alone.
+    const askGreetingRestaurantName = normalizeAskMiseGreetingRestaurantName(restaurant.name);
     const question = t("ask.suggestion.priorities");
     const reply = answerAskMise({
       question,
@@ -160,9 +174,11 @@ export default function AskMiseScreen() {
         id: "welcome",
         role: "mise",
         title: t("ask.greeting.hi", { name: greetingName }),
-        text: t("ask.greeting.body", {
-          restaurant: restaurant.name
-        })
+        text: askGreetingRestaurantName
+          ? t("ask.greeting.body", {
+              restaurant: askGreetingRestaurantName
+            })
+          : t("ask.greeting.body.none")
       },
       {
         id: "seed-question",
