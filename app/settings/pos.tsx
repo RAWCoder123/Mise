@@ -29,6 +29,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import type { PilotReadiness, PilotReadinessAreaId } from "../../services/domain/pilotReadiness";
+import { normalizePosProviderLabel } from "../../services/domain/presentationPosProviderLabelIdentity";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
 import type { PosIntegration, PosProvider } from "../../types/mise";
 import { addDaysToDateKey, toDateKeyInTimeZone } from "../../utils/format";
@@ -66,7 +67,13 @@ export default function POSConnectionScreen() {
   activeRestaurantIdRef.current = restaurant?.id ?? null;
   const canManage = canDeleteRestaurantData(memberships, restaurant?.id);
   const canReviewMappings = canManageRestaurantData(memberships, restaurant?.id);
-  const posProviderLabel = posProvider === "Manual CSV Upload" ? t("pos.provider.manualCsv") : posProvider;
+  // MISE-005VV: soft-null Unicode-padded / empty posProviderLabel so
+  // common.demo / common.none / connect-source own intentional empty states
+  // instead of a non-nullish ?? / truthy bypass. Leave raw posProvider
+  // tone/stats selection and ProviderOption list equality alone.
+  const posProviderLabel = normalizePosProviderLabel(
+    posProvider === "Manual CSV Upload" ? t("pos.provider.manualCsv") : posProvider
+  );
 
   useEffect(() => {
     requestIdRef.current += 1;
@@ -372,7 +379,7 @@ export default function POSConnectionScreen() {
           }
           meta={
             isDemoMode
-              ? posProviderLabel ?? t("common.demo")
+              ? posProviderLabel || t("common.demo")
               : visibleSquareConnected
                 ? t("common.live")
                 : t("pos.value.beta")
@@ -463,7 +470,7 @@ export default function POSConnectionScreen() {
             <SectionHeader
               title={t("pos.providers.title")}
               eyebrow={t("pos.providers.eyebrow")}
-              action={posProviderLabel ?? t("common.none")}
+              action={posProviderLabel || t("common.none")}
             />
             <View style={styles.providerList}>
               {providers.map((provider) => {
