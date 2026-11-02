@@ -30,6 +30,7 @@ import {
   TeamMembershipError,
   type AssignableTeamRole
 } from "../../services/domain/teamMembership";
+import { normalizeTeamSubtitleRestaurantName } from "../../services/domain/presentationTeamSubtitleRestaurantNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -204,8 +205,29 @@ export default function TeamSettingsScreen() {
     }
   }
 
+  // MISE-005WL: pin Team subtitle restaurant.name to ASCII C. Soft-null /
+  // Unicode-padded restaurant names fall through to team.subtitle without
+  // inventing clean restaurant identity from NBSP/em-space padding, and
+  // without letting Unicode-only space or empty string bypass that fallback
+  // through the prior always-pass-name row. Leave Ask Mise / Home greeting
+  // restaurant.name, Autonomy / Memory / Activity / Support / Privacy / Count /
+  // Insights subtitleRestaurant, Settings profile restaurant name (#1021),
+  // Sales Import hero restaurant name (#1022), Today title restaurant-name
+  // (#968), branding initials (#967), Settings workspace item.name, and Home
+  // ApprovalsSection card titles alone.
+  const teamSubtitleRestaurantName = normalizeTeamSubtitleRestaurantName(
+    restaurant?.name
+  );
+
   return (
-    <Screen title={t("team.title")} subtitle={restaurant ? restaurant.name : t("team.subtitle")}>
+    <Screen
+      title={t("team.title")}
+      subtitle={
+        restaurant && teamSubtitleRestaurantName
+          ? teamSubtitleRestaurantName
+          : t("team.subtitle")
+      }
+    >
       <View style={styles.stack}>
         {notice ? (
           <StatusNotice title={t(notice.titleKey)} message={notice.bodyKey ? t(notice.bodyKey) : undefined} tone={notice.tone} />
