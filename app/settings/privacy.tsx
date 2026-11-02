@@ -12,6 +12,7 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizePrivacySubtitleRestaurantName } from "../../services/domain/presentationPrivacySubtitleRestaurantNameIdentity";
 
 const PRIVACY_POLICY_URL = "https://getmise.app/privacy";
 
@@ -49,12 +50,25 @@ export default function PrivacySettingsScreen() {
     }
   }
 
+  // MISE-005WD: pin Privacy subtitle restaurant.name to ASCII C. Soft-null /
+  // Unicode-padded restaurant names fall through to privacy.subtitle without
+  // inventing clean restaurant identity from NBSP/em-space padding, and without
+  // letting Unicode-only space or empty string bypass that fallback through the
+  // prior always-interpolate-name row. Leave support/count subtitleRestaurant,
+  // Insights subtitle restaurant.name (MISE-005WC), Settings profile restaurant
+  // name (#1021), Sales Import hero restaurant name (#1022), Today title
+  // restaurant-name (#968), branding initials (#967), Settings workspace
+  // item.name, and Home ApprovalsSection card titles alone.
+  const privacySubtitleRestaurantName = normalizePrivacySubtitleRestaurantName(
+    restaurant?.name
+  );
+
   return (
     <Screen
       title={t("privacy.title")}
       subtitle={
-        signedIn && restaurant
-          ? t("privacy.subtitleRestaurant", { restaurant: restaurant.name })
+        signedIn && restaurant && privacySubtitleRestaurantName
+          ? t("privacy.subtitleRestaurant", { restaurant: privacySubtitleRestaurantName })
           : t("privacy.subtitle")
       }
       action={
