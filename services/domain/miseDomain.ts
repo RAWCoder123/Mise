@@ -50,6 +50,7 @@ import {
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity";
 import type { PurchaseAuthorityResult } from "./purchaseAuthority";
+import { normalizeDraftOrderSupplierName } from "./presentationDraftOrderSupplierNameIdentity";
 
 /**
  * Optional seeded demand source for tenants without sales history.
@@ -1199,7 +1200,16 @@ export function buildDraftsFromRecommendations(
   const now = options.now ?? new Date();
   const timeZone = options.timeZone ?? "UTC";
   return [...grouped.entries()].map(([supplierId, items]) => {
-    const supplierName = items[0]?.supplier_name ?? "Supplier";
+    // MISE-005VZ: pin draft-order supplier_name to ASCII C before the
+    // intentional hard-coded `"Supplier"` empty-state. Soft-null /
+    // Unicode-padded / control-bearing display names fall through to
+    // `"Supplier"` without inventing a clean supplier via Unicode trim and
+    // without letting non-nullish Unicode-only space bypass `??`. Leave
+    // Orders detail title (#1016), orderAutomation (#833), supplierReliability
+    // (#834), demo display-name (#914), recipient-email (#1032), and SQL
+    // cntrl pins alone.
+    const supplierName =
+      normalizeDraftOrderSupplierName(items[0]?.supplier_name) ?? "Supplier";
     const deliveryDate = nextDateKeyInTimeZone(now, timeZone);
     return {
       id: createId("order"),
