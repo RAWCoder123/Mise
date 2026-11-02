@@ -32,6 +32,7 @@ import {
   queueOperationalFindingDecision,
   summarizeInsights
 } from "../../services/miseService";
+import { normalizeInsightsSubtitleRestaurantName } from "../../services/domain/presentationInsightsSubtitleRestaurantNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -303,12 +304,26 @@ export default function InsightsScreen() {
           : t("insights.nextStep.empty")
     : t("insights.nextStep.empty");
   const serviceLabel = restaurant ? serviceStyleLabel(restaurant.service_style, t) : null;
-  const subtitle = restaurant
-    ? t("insights.subtitleRestaurantStyle", {
-        restaurant: restaurant.name,
-        style: serviceLabel ?? restaurant.cuisine_type ?? t("settings.profile.cuisineFallback")
-      })
-    : t("insights.subtitle");
+  // MISE-005WC: pin Insights subtitle restaurant.name to ASCII C. Soft-null /
+  // Unicode-padded restaurant names fall through to insights.subtitle without
+  // inventing clean restaurant identity from NBSP/em-space padding, and without
+  // letting Unicode-only space or empty string bypass that fallback through the
+  // prior always-interpolate-name row. Leave Insights profile restaurant-name
+  // chip (#969), Insights subtitle cuisine_type (#1029), Settings profile
+  // restaurant name (#1021), Sales Import hero restaurant name (#1022), Today
+  // screen title restaurant-name (#968), branding initials (#967), Settings
+  // workspace item.name, inventory/count/privacy/support subtitleRestaurant
+  // interpolations, and Home ApprovalsSection card titles alone.
+  const insightsSubtitleRestaurantName = normalizeInsightsSubtitleRestaurantName(
+    restaurant?.name
+  );
+  const subtitle =
+    restaurant && insightsSubtitleRestaurantName
+      ? t("insights.subtitleRestaurantStyle", {
+          restaurant: insightsSubtitleRestaurantName,
+          style: serviceLabel ?? restaurant.cuisine_type ?? t("settings.profile.cuisineFallback")
+        })
+      : t("insights.subtitle");
 
   return (
     <Screen
