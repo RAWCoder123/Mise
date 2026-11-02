@@ -50,6 +50,7 @@ import {
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity";
 import type { PurchaseAuthorityResult } from "./purchaseAuthority";
+import { normalizeTodayAttentionWhyItMatters } from "./presentationTodayAttentionWhyItMattersIdentity";
 
 /**
  * Optional seeded demand source for tenants without sales history.
@@ -1137,7 +1138,18 @@ export function buildTodaySummary(
       id: `attention_${spikeInsight.id}`,
       title: spikeInsight.title,
       detail: spikeInsight.recommended_action,
-      context: spikeInsight.why_it_matters ?? "Mise is learning this pattern.",
+      // MISE-005WB: pin TodaySummary sales-spike attention why_it_matters to
+      // ASCII C before the intentional hard-coded
+      // `"Mise is learning this pattern."` empty-state. Soft-null /
+      // Unicode-padded / control-bearing why prose falls through to that
+      // English fallback without inventing clean attention context via
+      // Unicode trim and without letting non-nullish Unicode-only space
+      // bypass `??`. Leave Daily Ops pickSignalLine why_it_matters (#867),
+      // operational-findings explanations (#921), Home ApprovalsSection
+      // whyItMatters, and importantInsight `?? undefined` alone.
+      context:
+        normalizeTodayAttentionWhyItMatters(spikeInsight.why_it_matters) ??
+        "Mise is learning this pattern.",
       actionLabel: "See insight",
       route: "/insights",
       severity: spikeInsight.severity
