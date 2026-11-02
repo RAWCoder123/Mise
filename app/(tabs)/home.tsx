@@ -28,6 +28,7 @@ import type {
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
+import { normalizeHomeGreetingRestaurantName } from "../../services/domain/presentationHomeGreetingRestaurantNameIdentity";
 import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
@@ -188,6 +189,20 @@ export default function HomeScreen() {
 
   const greetingName = firstName(user?.name) || t("home.greeting.fallbackName");
 
+  // MISE-005WJ: pin Home greeting restaurant.name to ASCII C.
+  // Soft-null / Unicode-padded restaurant names fall through to
+  // home.greeting.subtext.none without inventing clean restaurant identity from
+  // NBSP/em-space padding, and without letting Unicode-only space or empty
+  // string interpolate a blank-looking restaurant into home.greeting.subtext.
+  // Leave Autonomy subtitle restaurant.name (#1043), Memory subtitle
+  // restaurant.name (#1042), Activity History subtitle restaurant.name (#1041),
+  // Support/Privacy/Count/Insights subtitleRestaurant, Settings profile
+  // restaurant name (#1021), Sales Import hero restaurant name (#1022), Today
+  // title restaurant-name (#968), branding initials (#967), Ask Mise
+  // restaurant.name, Settings workspace item.name, team subtitle
+  // restaurant.name, and Home ApprovalsSection card titles alone.
+  const homeGreetingRestaurantName = normalizeHomeGreetingRestaurantName(restaurant.name);
+
   return (
     <Screen loading={loading}>
       <View style={styles.stack}>
@@ -196,7 +211,9 @@ export default function HomeScreen() {
         <View style={styles.greetingBlock}>
           <Text style={styles.greeting}>{t(greetingKeyForNow(restaurant.timezone), { name: greetingName })}</Text>
           <Text style={styles.greetingSubtext} numberOfLines={2}>
-            {t("home.greeting.subtext", { restaurant: restaurant.name })}
+            {homeGreetingRestaurantName
+              ? t("home.greeting.subtext", { restaurant: homeGreetingRestaurantName })
+              : t("home.greeting.subtext.none")}
           </Text>
           {visibleBrief?.demoLabeled ? (
             <Text style={styles.demoLabel}>{t("home.demo.label")}</Text>
