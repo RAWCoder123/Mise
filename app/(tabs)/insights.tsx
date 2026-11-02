@@ -32,6 +32,7 @@ import {
   queueOperationalFindingDecision,
   summarizeInsights
 } from "../../services/miseService";
+import { normalizeInsightsSubtitleCuisine } from "../../services/domain/presentationInsightsSubtitleCuisineIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -306,7 +307,18 @@ export default function InsightsScreen() {
   const subtitle = restaurant
     ? t("insights.subtitleRestaurantStyle", {
         restaurant: restaurant.name,
-        style: serviceLabel ?? restaurant.cuisine_type ?? t("settings.profile.cuisineFallback")
+        //
+        // MISE-005VU: soft-null Unicode-padded / control-bearing /
+        // empty cuisine_type so localized cuisineFallback owns the
+        // intentional empty style when serviceLabel is absent. Leave
+        // Insights profile cuisine chip (#970), restaurant-name chip
+        // (#969), Settings workspace cuisine meta (#1023), branding
+        // English cuisine (#967), and subtitle restaurant.name alone.
+        //
+        style:
+          serviceLabel ??
+          normalizeInsightsSubtitleCuisine(restaurant.cuisine_type) ??
+          t("settings.profile.cuisineFallback")
       })
     : t("insights.subtitle");
 
