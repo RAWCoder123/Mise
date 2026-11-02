@@ -18,6 +18,7 @@ import {
   canRestaurantRoleCompleteSharedTask,
   type RestaurantTask
 } from "../../services/domain/restaurantTasks";
+import { buildChecklistCompletionEvidenceLabel } from "../../services/domain/taskChecklistCompletionEvidenceLabelIdentity";
 import {
   canRestaurantRoleActOnTodayTask,
   type OperationalTodayTask,
@@ -31,6 +32,7 @@ import {
 } from "../../services/miseService";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { captureMiseError } from "../../services/telemetry";
+// MISE-005VT: checklist completion-evidence label write soft-null / omit.
 
 function BackAction() {
   const { t } = useLocale();
@@ -171,11 +173,10 @@ export default function TaskDetailScreen() {
         taskId: sharedTask.id,
         completionResult,
         completionEvidence: [
-          ...sharedTask.checklist.map((entry) => ({
-            type: "checklist_item",
-            label: entry.label ?? entry.type ?? "Completed checklist item",
-            completed: true
-          })),
+          // MISE-005VT: soft-null operator label; omit when empty / Unicode-
+          // padded so English UI fallbacks and machine type codes are never
+          // baked into durable evidence.
+          ...sharedTask.checklist.map((entry) => buildChecklistCompletionEvidenceLabel(entry)),
           ...(completionEvidence.trim()
             ? [{ type: sharedTask.verificationMethod, note: completionEvidence.trim() }]
             : [])
