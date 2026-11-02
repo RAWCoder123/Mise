@@ -40,6 +40,7 @@ import {
   fetchRestaurantOpsProfile,
   fetchSuppliers
 } from "../../services/miseService";
+import { normalizeSettingsWorkspaceRestaurantName } from "../../services/domain/presentationSettingsWorkspaceRestaurantNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -315,6 +316,23 @@ export default function SettingsScreen() {
           {availableRestaurants.length > 1
             ? availableRestaurants.map((item) => {
                 const selected = item.id === restaurant?.id;
+                // MISE-005WM: pin Settings workspace item.name to ASCII C.
+                // Soft-null / Unicode-padded restaurant names fall through to
+                // settings.workspace.metaFallback without inventing clean
+                // restaurant identity from NBSP/em-space padding, and without
+                // letting Unicode-only space or empty string render a
+                // blank-looking workspace name Text or a11y restaurant token.
+                // Leave workspace cuisine_type ?? metaFallback (#1023),
+                // Settings profile restaurant name (#1021), Sales Import hero
+                // restaurant name (#1022), Team subtitle restaurant.name
+                // (#1046), Ask Mise / Home greeting restaurant.name, Autonomy /
+                // Memory / Activity / Support / Privacy / Count / Insights
+                // subtitleRestaurant, Today title restaurant-name (#968),
+                // branding initials (#967), and Home ApprovalsSection card
+                // titles alone.
+                const workspaceRestaurantName =
+                  normalizeSettingsWorkspaceRestaurantName(item.name) ||
+                  t("settings.workspace.metaFallback");
                 return (
                   <Pressable
                     key={item.id}
@@ -322,7 +340,7 @@ export default function SettingsScreen() {
                     accessibilityState={{ selected, disabled: selected || Boolean(switchingRestaurantId) }}
                     accessibilityLabel={t(
                       selected ? "settings.workspace.currentAccessibility" : "settings.workspace.switchAccessibility",
-                      { restaurant: item.name }
+                      { restaurant: workspaceRestaurantName }
                     )}
                     accessibilityHint={selected ? undefined : t("settings.workspace.switchHint")}
                     disabled={selected || Boolean(switchingRestaurantId)}
@@ -336,7 +354,7 @@ export default function SettingsScreen() {
                   >
                     <Building2 size={icon.row} color={selected ? colors.accentDark : colors.muted} strokeWidth={iconStroke} />
                     <View style={styles.workspaceCopy}>
-                      <Text style={styles.workspaceName}>{item.name}</Text>
+                      <Text style={styles.workspaceName}>{workspaceRestaurantName}</Text>
                       <Text style={styles.workspaceMeta}>{item.cuisine_type ?? t("settings.workspace.metaFallback")}</Text>
                     </View>
                     {selected ? <Check size={icon.row} color={colors.success} strokeWidth={iconStroke} /> : null}
