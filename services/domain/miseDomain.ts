@@ -50,6 +50,7 @@ import {
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity";
 import type { PurchaseAuthorityResult } from "./purchaseAuthority";
+import { normalizeRecipeBaselineInventoryItemName } from "./presentationRecipeBaselineInventoryItemNameIdentity";
 
 /**
  * Optional seeded demand source for tenants without sales history.
@@ -796,13 +797,28 @@ export function buildRecipeBaselineSummary(
           .map((mapping) => ({
             mappingId: mapping.id,
             inventoryItemId: mapping.inventory_item_id,
-            itemName: itemNames.get(mapping.inventory_item_id) ?? "Inventory item",
+            // MISE-005WA: pin recipe-baseline inventory itemName to ASCII C
+            // before the intentional hard-coded `"Inventory item"` empty-state.
+            // Soft-null / Unicode-padded / control-bearing display names fall
+            // through to `"Inventory item"` without inventing a clean inventory
+            // name via Unicode trim and without letting non-nullish
+            // Unicode-only space bypass `??`. Leave Inventory detail title
+            // (#1017), waste itemName (#1018), demo recipe-baseline ingredient
+            // entry (#906), and setup-drafts ingredient itemName (#898) alone.
+            itemName:
+              normalizeRecipeBaselineInventoryItemName(itemNames.get(mapping.inventory_item_id)) ??
+              "Inventory item",
             quantityUsedPerSale: mapping.quantity_used_per_sale,
             unit: mapping.unit
           }))
           .sort((a, b) => a.itemName.localeCompare(b.itemName)),
         linkedInventoryItems: linkedMappings
-          .map((mapping) => itemNames.get(mapping.inventory_item_id) ?? "Inventory item")
+          .map(
+            (mapping) =>
+              // MISE-005WA: same ASCII C soft-null before `"Inventory item"`.
+              normalizeRecipeBaselineInventoryItemName(itemNames.get(mapping.inventory_item_id)) ??
+              "Inventory item"
+          )
           .sort((a, b) => a.localeCompare(b)),
         todayQuantitySold
       };
