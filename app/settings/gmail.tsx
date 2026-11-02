@@ -19,6 +19,7 @@ import {
   fetchEmailConnectionState,
   isGmailIntegrationError
 } from "../../services/miseService";
+import { normalizeSettingsGmailRestaurantName } from "../../services/domain/presentationSettingsGmailRestaurantNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -244,6 +245,23 @@ export default function GmailConnectionScreen() {
     ? t("settings.gmail.action.reconnect")
     : t("settings.gmail.action.connect");
 
+  // MISE-005WN: pin Settings Gmail connectionSubtitle restaurant.name to ASCII C.
+  // Soft-null / Unicode-padded restaurant names fall through to
+  // settings.gmail.connectionSubtitle.none without inventing clean restaurant
+  // identity from NBSP/em-space padding, and without letting Unicode-only space
+  // or empty string render a blank-looking connectionSubtitle under the
+  // Restaurant Gmail card. Leave Settings Gmail sender_email (#1019), Orders
+  // Gmail sender (#1020), setup-readiness Gmail sender (#1031), Settings
+  // workspace item.name (#1047), Team subtitle restaurant.name (#1046), Ask
+  // Mise / Home greeting restaurant.name, Autonomy / Memory / Activity /
+  // Support / Privacy / Count / Insights subtitleRestaurant, Settings profile
+  // restaurant name (#1021), Sales Import hero restaurant name (#1022), Today
+  // title restaurant-name (#968), branding initials (#967), and Home
+  // ApprovalsSection card titles alone.
+  const gmailConnectionSubtitleRestaurantName =
+    normalizeSettingsGmailRestaurantName(restaurant?.name) ||
+    t("settings.gmail.connectionSubtitle.none");
+
   return (
     <Screen
       title={t("settings.gmail.title")}
@@ -290,7 +308,7 @@ export default function GmailConnectionScreen() {
               </IconBadge>
               <View style={styles.connectionTitleBlock}>
                 <Text style={styles.connectionTitle}>{t("settings.gmail.card.title")}</Text>
-                <Text style={styles.connectionSubtitle}>{restaurant.name}</Text>
+                <Text style={styles.connectionSubtitle}>{gmailConnectionSubtitleRestaurantName}</Text>
               </View>
               <Badge label={statusPresentation.label} tone={statusPresentation.badgeTone} />
             </View>
