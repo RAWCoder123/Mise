@@ -42,6 +42,7 @@ import {
   type InventoryCountEvidenceMap
 } from "./inventoryCountAuthority";
 import { buildRecordedSalesTrend } from "./salesTrends";
+import { normalizeDemoReadinessCuisine } from "./presentationDemoReadinessCuisineIdentity";
 import {
   recipeDemandKey,
   saleDemandKey,
@@ -1548,12 +1549,22 @@ export function buildDemoReadinessSummary(
     { demoProfileName: options.demoProfileName }
   );
 
+  // MISE-005VY: pin demo-readiness profile cuisine_type to ASCII C.
+  // Soft-null Unicode-padded / empty cuisine before the truthy ready gate
+  // and `?? "Cuisine not set"` evidence so padded rows fail closed to
+  // attention / "Cuisine not set" without inventing a clean cuisine via
+  // Unicode trim or bypassing the intentional hard-coded empty state.
+  // Leave Insights subtitle (#1029), Settings workspace meta (#1023),
+  // Insights ProfileChip (#970), branding (#967), durable writer (#842),
+  // and restaurant-name inventing alone.
+  const demoReadinessCuisine = normalizeDemoReadinessCuisine(restaurant.cuisine_type);
+
   const checks: DemoReadinessCheck[] = [
     {
       id: "profile",
       label: "Restaurant profile",
-      status: restaurant.name.trim() && restaurant.cuisine_type?.trim() ? "ready" : "attention",
-      evidence: restaurant.cuisine_type ?? "Cuisine not set",
+      status: restaurant.name.trim() && demoReadinessCuisine ? "ready" : "attention",
+      evidence: demoReadinessCuisine ?? "Cuisine not set",
       detail: restaurant.name.trim()
         ? "The walkthrough has a named restaurant and cuisine lane."
         : "Add the restaurant name before demoing."
@@ -1828,9 +1839,17 @@ export function buildSetupReadinessSummary({
   const recipeBaseline = buildRecipeBaselineSummary(restaurant.id, sales, mappings, inventoryItems, operatingDate);
   const analytics = buildConditionalAnalyticsSummary(restaurant.id, sales, restaurantMappings, restaurantInventory, orders);
 
+  // MISE-005VY: pin setup-readiness profile cuisine_type to ASCII C.
+  // Soft-null Unicode-padded / empty cuisine before the Unicode-trim
+  // emptiness gate so padded-only or padded-nonempty cuisine cannot invent
+  // a clean readiness cuisine and omit `"cuisine/service style"`. Shares
+  // the demo-readiness cuisine identity helper; leaves restaurant-name
+  // inventing and sibling cuisine presentation tips alone.
+  const setupReadinessCuisine = normalizeDemoReadinessCuisine(restaurant.cuisine_type);
+
   const missingProfile = [
     !restaurant.name.trim() ? "restaurant name" : null,
-    !restaurant.cuisine_type?.trim() ? "cuisine/service style" : null,
+    !setupReadinessCuisine ? "cuisine/service style" : null,
     restaurant.operational_profile.orderCadence.length === 0 ? "order cadence" : null
   ].filter((item): item is string => Boolean(item));
   const missingInventory = [
