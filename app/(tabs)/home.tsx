@@ -28,6 +28,7 @@ import type {
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
+import { normalizeHomeApprovalsCardTitle } from "../../services/domain/presentationHomeApprovalsCardTitleIdentity";
 import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
@@ -381,9 +382,21 @@ function ApprovalsSection({
       ) : (
         cards.map((card) => {
           const canOneTap = Boolean(card.recommendationId);
+          // MISE-005WO: pin Home ApprovalsSection card.title to ASCII C.
+          // Soft-null / Unicode-padded titles fall through to
+          // home.approvals.cardTitle.none without inventing clean approval
+          // identity from NBSP/em-space padding, and without letting
+          // Unicode-only space or empty string render a blank-looking
+          // cardTitle. Leave StatusNotice approval titles (#1011),
+          // recommendedAction / whyItMatters body copy, Home greeting
+          // restaurant.name (#1044), and Settings Gmail / workspace / Team /
+          // Ask Mise restaurant.name tips alone.
+          const cardTitle = normalizeHomeApprovalsCardTitle(card.title);
           return (
             <View key={card.id} style={styles.briefCard}>
-              <Text style={styles.cardTitle}>{card.title}</Text>
+              <Text style={styles.cardTitle}>
+                {cardTitle || t("home.approvals.cardTitle.none")}
+              </Text>
               <Text style={styles.cardBody}>{card.recommendedAction}</Text>
               <Text style={styles.metaLine}>{t("home.approvals.why")}: {card.whyItMatters}</Text>
               <View style={styles.approvalActions}>
