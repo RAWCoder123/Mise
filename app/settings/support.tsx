@@ -12,6 +12,7 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizeSupportSubtitleRestaurantName } from "../../services/domain/presentationSupportSubtitleRestaurantNameIdentity";
 
 const SUPPORT_MAILTO = "mailto:support@getmise.app?subject=Mise%20beta%20support";
 const PRIVACY_MAILTO = "mailto:privacy@getmise.app?subject=Mise%20beta%20privacy";
@@ -50,12 +51,26 @@ export default function SupportSettingsScreen() {
     }
   }
 
+  // MISE-005WE: pin Support subtitle restaurant.name to ASCII C. Soft-null /
+  // Unicode-padded restaurant names fall through to support.subtitle without
+  // inventing clean restaurant identity from NBSP/em-space padding, and without
+  // letting Unicode-only space or empty string bypass that fallback through the
+  // prior always-interpolate-name row. Leave privacy/count subtitleRestaurant,
+  // Insights subtitle restaurant.name (MISE-005WC), Privacy subtitle
+  // restaurant.name (#1036 / MISE-005WD), Settings profile restaurant name
+  // (#1021), Sales Import hero restaurant name (#1022), Today title
+  // restaurant-name (#968), branding initials (#967), Settings workspace
+  // item.name, and Home ApprovalsSection card titles alone.
+  const supportSubtitleRestaurantName = normalizeSupportSubtitleRestaurantName(
+    restaurant?.name
+  );
+
   return (
     <Screen
       title={t("support.title")}
       subtitle={
-        signedIn && restaurant
-          ? t("support.subtitleRestaurant", { restaurant: restaurant.name })
+        signedIn && restaurant && supportSubtitleRestaurantName
+          ? t("support.subtitleRestaurant", { restaurant: supportSubtitleRestaurantName })
           : t("support.subtitle")
       }
       action={
