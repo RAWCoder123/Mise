@@ -13,6 +13,7 @@ import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { summarizeCountSessionProgress } from "../../services/domain/inventoryCountSessions";
+import { normalizeInventoryCountSubtitleRestaurantName } from "../../services/domain/presentationInventoryCountSubtitleRestaurantNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -33,6 +34,20 @@ export default function InventoryCountSessionScreen() {
   const { restaurant, memberships } = useMiseSession();
   const canDraft = canDraftInventoryCount(memberships, restaurant?.id ?? "");
   const canApprove = canApproveInventoryCount(memberships, restaurant?.id ?? "");
+  // MISE-005WF: pin Inventory Count subtitle restaurant.name to ASCII C.
+  // Soft-null / Unicode-padded restaurant names fall through to
+  // inventory.count.subtitle without inventing clean restaurant identity from
+  // NBSP/em-space padding, and without letting Unicode-only space or empty
+  // string bypass that fallback through the prior always-interpolate-name
+  // row. Leave Support/Privacy subtitleRestaurant (#1039/#1036), Insights hub
+  // subtitle restaurant.name (#1037), inventory hub subtitleRestaurant,
+  // Settings profile restaurant name (#1021), Sales Import hero restaurant
+  // name (#1022), Today title restaurant-name (#968), branding initials
+  // (#967), Settings workspace item.name, and Home ApprovalsSection card
+  // titles alone.
+  const inventoryCountSubtitleRestaurantName = normalizeInventoryCountSubtitleRestaurantName(
+    restaurant?.name
+  );
   const [detail, setDetail] = useState<InventoryCountSessionDetail | null>(null);
   const [draftCounts, setDraftCounts] = useState<Record<string, string>>({});
   const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
@@ -312,7 +327,13 @@ export default function InventoryCountSessionScreen() {
   return (
     <Screen
       title={t("inventory.count.title")}
-      subtitle={t("inventory.count.subtitleRestaurant", { restaurant: restaurant.name })}
+      subtitle={
+        inventoryCountSubtitleRestaurantName
+          ? t("inventory.count.subtitleRestaurant", {
+              restaurant: inventoryCountSubtitleRestaurantName
+            })
+          : t("inventory.count.subtitle")
+      }
       loading={loading}
     >
       <View style={styles.stack}>
