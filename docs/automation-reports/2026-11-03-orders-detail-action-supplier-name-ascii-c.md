@@ -38,7 +38,8 @@ Alone-OK relative to #1016 / #1050 / #1051 (different call sites / helpers).
 ## Verification
 
 - focused tip tests: 5/5
-- `npm run typecheck`
-- `npm run security:static`
-- `npm run security:backend`
-- `npm test`
+- `npm run typecheck`: passed
+- `npm run security:static`: passed
+- `npm run security:backend`: passed
+- `npm test`: 688 total / 681 pass / 0 fail / 7 cancelled (inherited `recalculationCycles`)
+- Docker pgTAP unavailable in this environment
