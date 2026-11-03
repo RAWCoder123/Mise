@@ -22,6 +22,7 @@ import {
   queueInventoryOperation,
   type DeliveryHistoryEntry
 } from "../../services/miseService";
+import { normalizeLogDeliveryHistoryItemName } from "../../services/domain/presentationLogDeliveryHistoryItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -335,35 +336,51 @@ export default function LogDeliveryScreen() {
               />
             ) : (
               <View style={styles.historyList}>
-                {visibleHistory.map((entry) => (
-                  <View key={entry.id} style={styles.historyCard}>
-                    <View style={styles.historyMain}>
-                      <Text style={styles.historyTitle}>{entry.itemName}</Text>
-                      <Text style={styles.historyMeta}>
-                        {t("logDelivery.history.quantity", {
-                          qty: formatNumber(entry.quantity, { maximumFractionDigits: 2 }),
-                          unit: t(
-                            `inventory.ops.unit.${entry.canonicalUnit}` as
-                              | "inventory.ops.unit.g"
-                              | "inventory.ops.unit.ml"
-                              | "inventory.ops.unit.each"
-                          )
-                        })}
-                      </Text>
-                      <Text style={styles.historyWhen}>
-                        {formatWhen(entry.effectiveAt)}
-                      </Text>
-                      {entry.note ? (
-                        <Text numberOfLines={2} style={styles.historyNote}>
-                          {entry.note}
+                {visibleHistory.map((entry) => {
+                  // MISE-005XB: pin Log Delivery history card title entry.itemName
+                  // to ASCII C. Soft-null / Unicode-padded history item names fall
+                  // through to logDelivery.history.itemName.none without inventing
+                  // clean item identity from NBSP/em-space padding, and without
+                  // letting Unicode-only space or empty string render a
+                  // blank-looking history card title. Leave selected.item_name
+                  // (#1060), pick-list item.item_name (#1059), Scan Item row
+                  // titles (#1061), Inventory hub item.item_name (#1056),
+                  // Inventory count line.item_name (#1058), Inventory detail
+                  // item_name (#1017), history entry.note, search/filter
+                  // haystack matching, and sibling supplier_name tips alone.
+                  const historyItemName =
+                    normalizeLogDeliveryHistoryItemName(entry.itemName) ||
+                    t("logDelivery.history.itemName.none");
+                  return (
+                    <View key={entry.id} style={styles.historyCard}>
+                      <View style={styles.historyMain}>
+                        <Text style={styles.historyTitle}>{historyItemName}</Text>
+                        <Text style={styles.historyMeta}>
+                          {t("logDelivery.history.quantity", {
+                            qty: formatNumber(entry.quantity, { maximumFractionDigits: 2 }),
+                            unit: t(
+                              `inventory.ops.unit.${entry.canonicalUnit}` as
+                                | "inventory.ops.unit.g"
+                                | "inventory.ops.unit.ml"
+                                | "inventory.ops.unit.each"
+                            )
+                          })}
                         </Text>
+                        <Text style={styles.historyWhen}>
+                          {formatWhen(entry.effectiveAt)}
+                        </Text>
+                        {entry.note ? (
+                          <Text numberOfLines={2} style={styles.historyNote}>
+                            {entry.note}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {entry.syncing ? (
+                        <Badge label={t("logDelivery.history.syncing")} tone="warning" />
                       ) : null}
                     </View>
-                    {entry.syncing ? (
-                      <Badge label={t("logDelivery.history.syncing")} tone="warning" />
-                    ) : null}
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
             <Button
