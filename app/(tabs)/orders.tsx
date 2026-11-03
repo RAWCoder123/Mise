@@ -37,6 +37,7 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityResult
 } from "../../services/domain/purchaseAuthority";
+import { normalizeOrdersHubNoticeItemName } from "../../services/domain/presentationOrdersHubNoticeItemNameIdentity";
 import type { MessageKey } from "../../i18n/catalog";
 import type { PurchaseDecisionPattern } from "../../services/domain/purchaseDecisionMemory";
 import {
@@ -419,7 +420,19 @@ export default function OrdersScreen() {
       setRecommendations((current) =>
         current.filter((item) => item.id !== recommendation.id)
       );
-      showMessage(t("orders.notice.approved", { item: approved.item_name }), restaurantId);
+      // MISE-005WW: pin Orders hub notice approved.item_name to ASCII C.
+      // Soft-null / Unicode-padded item names fall through to
+      // orders.notice.itemName.none without inventing clean item identity from
+      // NBSP/em-space padding, and without letting Unicode-only space or empty
+      // string interpolate a blank-looking StatusNotice item token. Leave
+      // RecommendationDecisionRow item_name (#1055), Inventory hub item.item_name
+      // (#1056), Inventory detail item_name (#1017), SupplierDraftCard
+      // line.itemName (#972), inventory count line.item_name, and
+      // orders.notice.copied supplier interpolations alone.
+      const approvedItemName =
+        normalizeOrdersHubNoticeItemName(approved.item_name) ||
+        t("orders.notice.itemName.none");
+      showMessage(t("orders.notice.approved", { item: approvedItemName }), restaurantId);
     } catch (error) {
       if (activeRestaurantIdRef.current === restaurantId) {
         if (isPurchaseAuthorityBlockedError(error)) {
@@ -470,7 +483,11 @@ export default function OrdersScreen() {
       setRecommendations((current) =>
         current.filter((item) => item.id !== recommendation.id)
       );
-      showMessage(t("orders.notice.dismissed", { item: dismissed.item_name }), restaurantId);
+      // MISE-005WW: pin Orders hub notice dismissed.item_name to ASCII C.
+      const dismissedItemName =
+        normalizeOrdersHubNoticeItemName(dismissed.item_name) ||
+        t("orders.notice.itemName.none");
+      showMessage(t("orders.notice.dismissed", { item: dismissedItemName }), restaurantId);
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
         showMessage(t("orders.error.dismiss"), restaurantId, "danger");
@@ -506,7 +523,11 @@ export default function OrdersScreen() {
         supplier_name: restored.supplier_name,
         action: undoAction.action
       });
-      showMessage(t("orders.notice.undoRestored", { item: restored.item_name }), restaurantId);
+      // MISE-005WW: pin Orders hub notice restored.item_name to ASCII C.
+      const restoredItemName =
+        normalizeOrdersHubNoticeItemName(restored.item_name) ||
+        t("orders.notice.itemName.none");
+      showMessage(t("orders.notice.undoRestored", { item: restoredItemName }), restaurantId);
       setUndoAction(null);
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) {
@@ -826,7 +847,13 @@ export default function OrdersScreen() {
               visibleUndoAction.action === "approved"
                 ? "orders.undo.approved"
                 : "orders.undo.dismissed",
-              { item: visibleUndoAction.recommendation.item_name }
+              {
+                // MISE-005WW: pin Orders hub undo toast item_name to ASCII C.
+                item:
+                  normalizeOrdersHubNoticeItemName(
+                    visibleUndoAction.recommendation.item_name
+                  ) || t("orders.notice.itemName.none")
+              }
             )}
           </Text>
           <Pressable
@@ -835,7 +862,13 @@ export default function OrdersScreen() {
               visibleUndoAction.action === "approved"
                 ? "orders.undo.approvedAccessibility"
                 : "orders.undo.dismissedAccessibility",
-              { item: visibleUndoAction.recommendation.item_name }
+              {
+                // MISE-005WW: pin Orders hub undo a11y item_name to ASCII C.
+                item:
+                  normalizeOrdersHubNoticeItemName(
+                    visibleUndoAction.recommendation.item_name
+                  ) || t("orders.notice.itemName.none")
+              }
             )}
             disabled={visibleUndoAction.busy}
             onPress={() => void undoLastAction()}
