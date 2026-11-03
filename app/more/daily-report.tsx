@@ -39,6 +39,7 @@ import type {
   SupplierReliabilityReason,
   SupplierReliabilityStatus
 } from "../../services/domain/supplierReliability";
+import { normalizeDailyReportSalesTopItemName } from "../../services/domain/presentationDailyReportSalesTopItemNameIdentity";
 import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
@@ -209,7 +210,17 @@ export default function DailyReportScreen() {
                   {visibleReport.sales.topItems.map((item) => (
                     <Text key={`${item.itemName}-${item.quantitySold}`} style={styles.topItemLine}>
                       {t("dailyReport.sales.topItemLine", {
-                        item: item.itemName,
+                        // MISE-005XC: pin Daily Report sales top-sellers item.itemName
+                        // to ASCII C. Soft-null empty / Unicode-padded / control-bearing
+                        // names before dailyReport.sales.topItemLine interpolations so
+                        // padding cannot invent a clean item identity and blank-looking
+                        // names fall through to localized
+                        // dailyReport.sales.topItem.itemName.none. Leave waste.topItem
+                        // itemName, deliveries.line itemName, waste.event.unknownItem
+                        // (#1018), supplier.supplierName (#1053), and React list keys alone.
+                        item:
+                          normalizeDailyReportSalesTopItemName(item.itemName) ||
+                          t("dailyReport.sales.topItem.itemName.none"),
                         qty: formatNumber(item.quantitySold),
                         sales: formatCompactCurrency(
                           item.grossSales,
