@@ -39,6 +39,7 @@ import type {
   SupplierReliabilityReason,
   SupplierReliabilityStatus
 } from "../../services/domain/supplierReliability";
+import { normalizeDailyReportWasteTopItemName } from "../../services/domain/presentationDailyReportWasteTopItemNameIdentity";
 import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
@@ -307,7 +308,20 @@ export default function DailyReportScreen() {
                   {visibleReport.wasteAnalysis.topItems[0] ? (
                     <Text style={styles.metaLine}>
                       {t("dailyReport.waste.topItem", {
-                        item: visibleReport.wasteAnalysis.topItems[0].itemName,
+                        // MISE-005XD: pin Daily Report waste.topItem itemName
+                        // to ASCII C. Soft-null empty / Unicode-padded /
+                        // control-bearing names before dailyReport.waste.topItem
+                        // interpolations so padding cannot invent a clean item
+                        // identity and blank-looking names fall through to
+                        // localized dailyReport.waste.topItem.itemName.none.
+                        // Leave sales.topItemLine item.itemName (#1063),
+                        // deliveries.line itemName, waste.event.unknownItem
+                        // (#1018), supplier.supplierName (#1053), and React
+                        // list keys alone.
+                        item:
+                          normalizeDailyReportWasteTopItemName(
+                            visibleReport.wasteAnalysis.topItems[0].itemName
+                          ) || t("dailyReport.waste.topItem.itemName.none"),
                         entries: formatNumber(
                           visibleReport.wasteAnalysis.topItems[0].eventCount
                         )
