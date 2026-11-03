@@ -12,6 +12,7 @@ import { colors, conceptTypography, icon, iconStroke, radii } from "../../consta
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { autonomyLevelLabel } from "../../services/domain/operationalStatus";
+import { normalizeAutonomyRuleSupplierName } from "../../services/domain/presentationAutonomyRuleSupplierNameIdentity";
 import type { RestaurantAutonomyRule } from "../../services/domain/restaurantAutonomy";
 import {
   createSafeDefaultAutonomyRules,
@@ -250,7 +251,18 @@ export default function AutonomySettingsScreen() {
                     />
                     <ReadOnlyField
                       label={t("autonomy.field.supplier")}
-                      value={rule.supplierName ?? "—"}
+                      value={
+                        // MISE-005XF: pin Autonomy rule supplierName to ASCII C.
+                        // Soft-null empty / Unicode-padded / control-bearing
+                        // names before Supplier scope render so blank-looking
+                        // identity cannot bypass the intentional localized
+                        // autonomy.field.supplier.none (prior `?? "—"` still
+                        // rendered non-nullish Unicode-only space / empty).
+                        // Leave Autonomy subtitle restaurant.name, Settings
+                        // suppliers entry.supplierName, and React list keys alone.
+                        normalizeAutonomyRuleSupplierName(rule.supplierName) ||
+                        t("autonomy.field.supplier.none")
+                      }
                     />
                     <Field
                       label={t("autonomy.field.communication")}
