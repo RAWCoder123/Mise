@@ -35,6 +35,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import { normalizeInventoryHubItemName } from "../../services/domain/presentationInventoryHubItemNameIdentity";
 import {
   fetchInventoryOutlookItems,
   fetchOpenInventoryCountSession,
@@ -471,17 +472,32 @@ function InventoryListRow({
   const iconTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "leaf";
   const badgeTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "success";
 
+  // MISE-005WV: pin Inventory hub list item.item_name to ASCII C.
+  // Soft-null / Unicode-padded item names fall through to
+  // inventory.row.itemName.none without inventing clean item identity from
+  // NBSP/em-space padding, and without letting Unicode-only space or empty
+  // string render a blank-looking OperationalRow title or a11y token. Leave
+  // Inventory detail item_name (#1017), Inventory detail supplier_name (#1052),
+  // RecommendationDecisionRow item_name (#1055), Orders review
+  // recommendation.supplier_name (#1051), SupplierDraftCard supplier_name
+  // (#1050), SupplierDraftCard line.itemName (#972), Orders hub notice
+  // item_name interpolations, inventory count line.item_name, hub
+  // search/filter matching, and inventoryPresentation prediction why copy
+  // alone.
+  const itemName =
+    normalizeInventoryHubItemName(item.item_name) || t("inventory.row.itemName.none");
+
   return (
     <OperationalRow
       density="operational"
-      title={item.item_name}
+      title={itemName}
       subtitle={`${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${item.unit} · ${localized.coverage}`}
       icon={categoryIcon(item.category, statusColor)}
       iconTone={iconTone}
       badgeLabel={localized.status}
       badgeTone={badgeTone}
       accessibilityLabel={t("inventory.row.accessibilityLedger", {
-        item: item.item_name,
+        item: itemName,
         status: localized.status,
         coverage: localized.coverage,
         action: localized.action,
