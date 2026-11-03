@@ -15,6 +15,7 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
+import { normalizeScanItemRowItemName } from "../../services/domain/presentationScanItemRowItemNameIdentity";
 import { fetchInventoryItems } from "../../services/miseService";
 import type { InventoryItem } from "../../types/mise";
 
@@ -249,21 +250,39 @@ export default function ScanItemScreen() {
           />
         ) : (
           <View style={styles.list}>
-            {listItems.map((item) => (
-              <OperationalRow
-                key={item.id}
-                density="operational"
-                title={item.item_name}
-                subtitle={t("scanItem.row.meta", {
-                  category: item.category,
-                  code: item.id
-                })}
-                value={`${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${item.unit}`}
-                icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
-                onPress={() => router.push(`/inventory/${item.id}`)}
-                accessibilityLabel={t("scanItem.row.accessibility", { item: item.item_name })}
-              />
-            ))}
+            {listItems.map((item) => {
+              // MISE-005XA: pin Scan Item row item.item_name to ASCII C.
+              // Soft-null / Unicode-padded item names fall through to
+              // scanItem.row.itemName.none without inventing clean item
+              // identity from NBSP/em-space padding, and without letting
+              // Unicode-only space or empty string render a blank-looking
+              // OperationalRow title or a11y token. Leave Log Delivery
+              // pick-list item.item_name (#1059), Log Delivery selected
+              // selected.item_name (#1060), Log Delivery history
+              // entry.itemName, Inventory hub item.item_name (#1056),
+              // Inventory count line.item_name (#1058), Inventory detail
+              // item_name (#1017), Scan Item search/filter haystack
+              // matching, and sibling supplier_name tips alone.
+              const itemName =
+                normalizeScanItemRowItemName(item.item_name) ||
+                t("scanItem.row.itemName.none");
+
+              return (
+                <OperationalRow
+                  key={item.id}
+                  density="operational"
+                  title={itemName}
+                  subtitle={t("scanItem.row.meta", {
+                    category: item.category,
+                    code: item.id
+                  })}
+                  value={`${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${item.unit}`}
+                  icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
+                  onPress={() => router.push(`/inventory/${item.id}`)}
+                  accessibilityLabel={t("scanItem.row.accessibility", { item: itemName })}
+                />
+              );
+            })}
           </View>
         )}
 
