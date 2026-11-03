@@ -33,6 +33,7 @@ import {
   type RestaurantTaskServiceWindow,
   type RestaurantTaskVerificationMethod
 } from "../../services/miseService";
+import { normalizeCreateTaskListRowTitle } from "../../services/domain/presentationCreateTaskListRowTitleIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -688,7 +689,12 @@ export default function CreateOperatorTaskScreen() {
               <View key={task.id} style={styles.taskCard}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={t("operatorTasks.list.rowAccessibility", { title: task.title })}
+                  accessibilityLabel={t("operatorTasks.list.rowAccessibility", {
+                    // MISE-005XL: soft-null blank / Unicode-padded titles before a11y interpolation.
+                    title:
+                      normalizeCreateTaskListRowTitle(task.title) ||
+                      t("operatorTasks.list.rowTitle.none")
+                  })}
                   onPress={() => router.push(`/tasks/${task.id}`)}
                   disabled={!hubReady}
                   style={({ pressed }) => [styles.taskMain, pressed && styles.pressed]}
@@ -729,7 +735,10 @@ export default function CreateOperatorTaskScreen() {
                   <Pressable
                     accessibilityRole={focusRoute ? "button" : undefined}
                     accessibilityLabel={t("operatorTasks.list.rowAccessibility", {
-                      title: task.title
+                      // MISE-005XL: soft-null blank / Unicode-padded titles before a11y interpolation.
+                      title:
+                        normalizeCreateTaskListRowTitle(task.title) ||
+                        t("operatorTasks.list.rowTitle.none")
                     })}
                     disabled={!focusRoute || !hubReady}
                     onPress={focusRoute ? () => router.push(focusRoute as never) : undefined}
