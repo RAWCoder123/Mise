@@ -22,6 +22,7 @@ import {
   queueInventoryOperation,
   type DeliveryHistoryEntry
 } from "../../services/miseService";
+import { normalizeLogDeliveryItemName } from "../../services/domain/presentationLogDeliveryItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -390,31 +391,52 @@ export default function LogDeliveryScreen() {
               <EmptyState title={t("logDelivery.empty.title")} body={t("logDelivery.empty.body")} />
             ) : (
               <View style={styles.list}>
-                {filtered.map((item) => (
-                  <OperationalRow
-                    key={item.id}
-                    density="operational"
-                    title={item.item_name}
-                    subtitle={
-                      isCanonicalUnitReady(item)
-                        ? t("logDelivery.row.ready", {
-                            qty: formatNumber(item.current_quantity, { maximumFractionDigits: 1 }),
-                            unit: item.unit
-                          })
-                        : t("logDelivery.row.unverified")
-                    }
-                    icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
-                    onPress={() => {
-                      setSelected(item);
-                      setMessage(null);
-                      setMessageIsError(false);
-                      setLastLoggedItemId(null);
-                      setQuantityText("");
-                      setNoteText("");
-                    }}
-                    accessibilityLabel={t("logDelivery.row.accessibility", { item: item.item_name })}
-                  />
-                ))}
+                {filtered.map((item) => {
+                  // MISE-005WY: pin Log Delivery pick-list item.item_name to ASCII C.
+                  // Soft-null / Unicode-padded item names fall through to
+                  // logDelivery.row.itemName.none without inventing clean item
+                  // identity from NBSP/em-space padding, and without letting
+                  // Unicode-only space or empty string render a blank-looking
+                  // OperationalRow title or a11y token. Leave Scan Item row
+                  // titles, selected StatusNotice / Screen subtitle
+                  // selected.item_name, history entry.itemName, Inventory hub
+                  // item.item_name (#1056), Inventory count line.item_name
+                  // (#1058), Inventory detail item_name (#1017), search/filter
+                  // haystack matching, and sibling supplier_name tips alone.
+                  const itemName =
+                    normalizeLogDeliveryItemName(item.item_name) ||
+                    t("logDelivery.row.itemName.none");
+
+                  return (
+                    <OperationalRow
+                      key={item.id}
+                      density="operational"
+                      title={itemName}
+                      subtitle={
+                        isCanonicalUnitReady(item)
+                          ? t("logDelivery.row.ready", {
+                              qty: formatNumber(item.current_quantity, {
+                                maximumFractionDigits: 1
+                              }),
+                              unit: item.unit
+                            })
+                          : t("logDelivery.row.unverified")
+                      }
+                      icon={
+                        <Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />
+                      }
+                      onPress={() => {
+                        setSelected(item);
+                        setMessage(null);
+                        setMessageIsError(false);
+                        setLastLoggedItemId(null);
+                        setQuantityText("");
+                        setNoteText("");
+                      }}
+                      accessibilityLabel={t("logDelivery.row.accessibility", { item: itemName })}
+                    />
+                  );
+                })}
               </View>
             )}
           </>
