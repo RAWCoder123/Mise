@@ -24,6 +24,7 @@ import {
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
+import { normalizeRecipesIngredientItemName } from "../../services/domain/presentationRecipesIngredientItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -683,11 +684,28 @@ function RecipeRow({
               const isBusy = savingMappingId !== null;
               const parsed = parsedQuantity(draftValue);
               const isDirty = parsed !== null && parsed !== ingredient.quantityUsedPerSale;
+              // MISE-005XG: pin Recipes ingredient.itemName to ASCII C.
+              // Soft-null / Unicode-padded ingredient names fall through to
+              // recipes.row.itemName.none without inventing clean ingredient
+              // identity from NBSP/em-space padding, and without letting
+              // Unicode-only space or empty string render a blank-looking
+              // ingredient name Text or a11y token. Leave Inventory hub
+              // item.item_name (#1056), Inventory detail item_name (#1017),
+              // RecommendationDecisionRow item_name (#1055), Inventory count
+              // line.item_name (#1058), Orders hub notice item_name (#1057),
+              // Daily Report waste.topItem itemName (#1064), Log Delivery
+              // history entry.itemName (#1062), Scan Item row item.item_name
+              // (#1061), SupplierDraftCard line.itemName (#972), recipe
+              // menu_item_name / POS missing-recipe badges, setup draft
+              // ingredient.itemName validation trim, and React list keys alone.
+              const ingredientName =
+                normalizeRecipesIngredientItemName(ingredient.itemName) ||
+                t("recipes.row.itemName.none");
 
               return (
                 <View key={ingredient.mappingId} style={styles.ingredientEditor}>
                   <View style={styles.ingredientTextBlock}>
-                    <Text style={styles.ingredientName}>{ingredient.itemName}</Text>
+                    <Text style={styles.ingredientName}>{ingredientName}</Text>
                     <Text style={styles.ingredientUnit}>{t("recipes.row.perSale")}</Text>
                   </View>
                   <View style={styles.ingredientControls}>
@@ -714,14 +732,16 @@ function RecipeRow({
                           editable={!isBusy}
                           keyboardType="decimal-pad"
                           selectTextOnFocus
-                          accessibilityLabel={t("recipes.row.quantityAccessibility", { ingredient: ingredient.itemName })}
+                          accessibilityLabel={t("recipes.row.quantityAccessibility", {
+                            ingredient: ingredientName
+                          })}
                           accessibilityState={{ disabled: isBusy }}
                           style={styles.quantityInput}
                         />
                       ) : (
                         <Text
                           accessibilityLabel={t("recipes.row.readOnlyAccessibility", {
-                            ingredient: ingredient.itemName,
+                            ingredient: ingredientName,
                             quantity: draftValue,
                             unit: ingredient.unit
                           })}
@@ -737,7 +757,9 @@ function RecipeRow({
                     {canManage ? (
                       <Button
                         title={t(isSaving ? "recipes.action.saving" : "recipes.action.save")}
-                        accessibilityLabel={t("recipes.action.saveAccessibility", { ingredient: ingredient.itemName })}
+                        accessibilityLabel={t("recipes.action.saveAccessibility", {
+                          ingredient: ingredientName
+                        })}
                         variant="secondary"
                         icon={<Save size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                         disabled={isBusy || !isDirty}
