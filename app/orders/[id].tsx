@@ -35,6 +35,7 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityBlockerCode
 } from "../../services/domain/purchaseAuthority";
+import { normalizeOrdersDetailActionSupplierName } from "../../services/domain/presentationOrdersDetailActionSupplierNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -433,6 +434,21 @@ export default function OrderDraftDetailScreen() {
   const previewBlockerNotice = visibleEmailPayload && !visibleEmailPayload.ready
     ? supplierSendBlockerNotice(visibleEmailPayload.blockerCodes, t)
     : null;
+  // MISE-005XH: pin Orders detail action a11y supplier_name to ASCII C.
+  // Soft-null / Unicode-padded names fall through to
+  // orders.detail.action.supplier.none without inventing clean supplier
+  // identity from NBSP/em-space padding, and without letting Unicode-only
+  // space or empty string interpolate a blank-looking supplier into copy /
+  // simulate / approve-and-send / mark-received accessibility labels. Leave
+  // Orders detail title supplier_name (#1016), SupplierDraftCard
+  // supplier_name (#1050), Orders review supplier_name (#1051), email-review
+  // headers (#1015), email-review body (#1014), note.none (#1013),
+  // operator_note (#840), durable send From/To (#708), durable send subject
+  // (#913), delivery-evidence (#1010), receive-discrepancy (#670), and the
+  // approveAndSend recipient interpolation alone.
+  const actionSupplierName =
+    normalizeOrdersDetailActionSupplierName(visibleOrder?.supplier_name) ||
+    t("orders.detail.action.supplier.none");
 
   function goBackToOrders() {
     if (navigation.canGoBack()) navigation.goBack();
@@ -731,7 +747,7 @@ export default function OrderDraftDetailScreen() {
             <Button
               title={t("orders.detail.action.copy")}
               accessibilityLabel={t("orders.detail.action.copyAccessibility", {
-                supplier: visibleOrder.supplier_name
+                supplier: actionSupplierName
               })}
               variant="secondary"
               icon={<Copy size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
@@ -762,9 +778,9 @@ export default function OrderDraftDetailScreen() {
                   ? t("orders.detail.action.simulate")
                   : t("orders.detail.gmail.approveAndSend")}
               accessibilityLabel={usingLocalDemo
-                ? t("orders.detail.action.simulateAccessibility", { supplier: visibleOrder.supplier_name })
+                ? t("orders.detail.action.simulateAccessibility", { supplier: actionSupplierName })
                 : t("orders.detail.action.approveAndSendAccessibility", {
-                    supplier: visibleOrder.supplier_name,
+                    supplier: actionSupplierName,
                     recipient: visibleEmailPayload?.to ?? ""
                   })}
               icon={<Send size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
@@ -778,7 +794,7 @@ export default function OrderDraftDetailScreen() {
             <Button
               title={busy ? t("orders.detail.action.receiving") : t("orders.detail.action.markReceived")}
               accessibilityLabel={t("orders.detail.action.markReceivedAccessibility", {
-                supplier: visibleOrder.supplier_name
+                supplier: actionSupplierName
               })}
               icon={<CheckCircle2 size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void markReceived()}
