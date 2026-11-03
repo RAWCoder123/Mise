@@ -14,6 +14,7 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefCardHeaderTitle } from "../../services/domain/presentationDailyBriefCardHeaderTitleIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -234,7 +235,12 @@ function FindingCard({
       <Text
         style={styles.cardTitle}
         accessibilityRole="header"
-        accessibilityLabel={`${finding.title}. ${severityLabel}`}
+        accessibilityLabel={`${
+          // MISE-005XO: soft-null blank / Unicode-padded / control-bearing
+          // finding titles before card header a11y interpolation.
+          normalizeDailyBriefCardHeaderTitle(finding.title) ||
+          t("dailyBrief.cardHeader.title.none")
+        }. ${severityLabel}`}
       >
         {finding.title}
       </Text>
