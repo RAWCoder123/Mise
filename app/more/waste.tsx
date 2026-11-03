@@ -25,6 +25,7 @@ import type {
   WasteAnalysisStatus,
   WasteAnalysisTrend
 } from "../../services/domain/wasteAnalysis";
+import { normalizeWasteActionReviewItemName } from "../../services/domain/presentationWasteActionReviewItemNameIdentity";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -226,7 +227,21 @@ export default function WasteScreen() {
                     icon={<PackageMinus size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                     iconTone={item.distinctDayCount >= 2 ? "warning" : "neutral"}
                     onPress={() => router.push(`/inventory/${item.inventoryItemId}` as never)}
-                    accessibilityLabel={t("waste.action.reviewItem", { item: item.itemName })}
+                    accessibilityLabel={t("waste.action.reviewItem", {
+                      // MISE-005XM: pin Waste top-items row a11y item.itemName
+                      // to ASCII C. Soft-null empty / Unicode-padded /
+                      // control-bearing names before waste.action.reviewItem
+                      // interpolations so padding cannot invent a clean item
+                      // identity and blank-looking names fall through to
+                      // localized waste.action.reviewItem.item.none. Leave
+                      // OperationalRow title={item.itemName}, waste.event.unknownItem
+                      // paths (#1018), Daily Report waste.topItem (#1064),
+                      // sales top-sellers (#1063), and Inventory hub item_name
+                      // (#1056) alone.
+                      item:
+                        normalizeWasteActionReviewItemName(item.itemName) ||
+                        t("waste.action.reviewItem.item.none")
+                    })}
                   />
                 ))}
               </Card>
