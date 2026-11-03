@@ -9,6 +9,7 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityResult
 } from "../services/domain/purchaseAuthority";
+import { normalizeRecommendationDecisionRowItemName } from "../services/domain/presentationRecommendationDecisionRowItemNameIdentity";
 import type { MessageKey } from "../i18n/catalog";
 import type { PurchaseRecommendation } from "../types/mise";
 import type { PurchaseDecisionPattern } from "../services/domain/purchaseDecisionMemory";
@@ -71,11 +72,25 @@ export function RecommendationDecisionRow({
     ? (`orders.memory.outcome.${purchaseDecisionPattern.dominantOutcome}` as MessageKey)
     : null;
 
+  // MISE-005WU: pin RecommendationDecisionRow recommendation.item_name to ASCII C.
+  // Soft-null / Unicode-padded item names fall through to
+  // orders.recommendation.itemName.none without inventing clean item identity
+  // from NBSP/em-space padding, and without letting Unicode-only space or empty
+  // string render a blank-looking itemName Text or a11y token. Leave Orders
+  // review recommendation.supplier_name (#1051), Inventory detail item_name
+  // (#1017), Inventory detail supplier_name (#1052), SupplierDraftCard
+  // supplier_name (#1050), SupplierDraftCard line.itemName (#972), Orders hub
+  // notice item_name interpolations, recommendation.reason free-text, and
+  // inventory hub list item.item_name alone.
+  const itemName =
+    normalizeRecommendationDecisionRowItemName(recommendation.item_name) ||
+    t("orders.recommendation.itemName.none");
+
   return (
     <View style={[styles.row, showDivider && styles.rowDivider, busy && styles.rowBusy]}>
       <View style={styles.heading}>
         <View style={styles.headingCopy}>
-          <Text style={styles.itemName}>{recommendation.item_name}</Text>
+          <Text style={styles.itemName}>{itemName}</Text>
           <View style={styles.statusLine}>
             <Badge label={operationalLabel} tone="caution" />
             <Text
@@ -96,7 +111,7 @@ export function RecommendationDecisionRow({
               expanded
                 ? "orders.recommendation.reason.hideAccessibility"
                 : "orders.recommendation.reason.showAccessibility",
-              { item: recommendation.item_name }
+              { item: itemName }
             )
           }
           accessibilityState={{ expanded }}
@@ -190,7 +205,7 @@ export function RecommendationDecisionRow({
           <View
             accessible
             accessibilityLabel={t("orders.recommendation.quantityReadOnlyAccessibility", {
-              item: recommendation.item_name,
+              item: itemName,
               quantity,
               unit: recommendation.unit
             })}
@@ -204,7 +219,7 @@ export function RecommendationDecisionRow({
           <View style={[styles.inputWrap, error && styles.inputWrapError]}>
             <TextInput
               accessibilityLabel={t("orders.recommendation.quantityAccessibility", {
-                item: recommendation.item_name
+                item: itemName
               })}
               accessibilityState={{ disabled: busy }}
               value={quantity}
@@ -230,7 +245,7 @@ export function RecommendationDecisionRow({
           <Button
             title={t(action === "approve" ? "orders.recommendation.approving" : "orders.recommendation.approve")}
             accessibilityLabel={t("orders.recommendation.approveAccessibility", {
-              item: recommendation.item_name
+              item: itemName
             })}
             accessibilityState={{ disabled: busy || approvalBlocked }}
             icon={<Check size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
@@ -241,7 +256,7 @@ export function RecommendationDecisionRow({
           <Button
             title={t(action === "dismiss" ? "orders.recommendation.dismissing" : "orders.recommendation.dismiss")}
             accessibilityLabel={t("orders.recommendation.dismissAccessibility", {
-              item: recommendation.item_name
+              item: itemName
             })}
             accessibilityState={{ disabled: busy }}
             variant="secondary"
