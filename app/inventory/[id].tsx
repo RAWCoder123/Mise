@@ -30,6 +30,7 @@ import {
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
+import { normalizeInventoryDetailAddAccessibilityItemName } from "../../services/domain/presentationInventoryDetailAddAccessibilityItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -476,7 +477,13 @@ export default function InventoryDetailScreen() {
             {mutationAllowed ? (
               <Button
                 title={t("inventory.detail.addToOrder")}
-                accessibilityLabel={t("inventory.detail.addAccessibility", { item: item.item_name })}
+                accessibilityLabel={t("inventory.detail.addAccessibility", {
+                  // MISE-005XJ: soft-null blank / Unicode-padded / control-bearing
+                  // item names before add-action a11y interpolation.
+                  item:
+                    normalizeInventoryDetailAddAccessibilityItemName(item.item_name) ||
+                    t("inventory.detail.add.item.none")
+                })}
                 variant="secondary"
                 icon={<ClipboardList size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => void addToOrder()}
