@@ -21,6 +21,7 @@ import {
   saveSupplierRecipient
 } from "../../services/miseService";
 import type { SupplierRecipientDirectoryEntry } from "../../services/domain/supplierRecipients";
+import { normalizeSettingsSuppliersEntrySupplierName } from "../../services/domain/presentationSettingsSuppliersEntrySupplierNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -35,7 +36,7 @@ interface SupplierNotice {
 
 export default function SupplierRecipientsScreen() {
   const navigation = useNavigation();
-  const { formatNumber, locale } = useLocale();
+  const { formatNumber, locale, t } = useLocale();
   const copy = supplierCopy[locale];
   const { memberships, restaurant } = useMiseSession();
   const [entries, setEntries] = useState<SupplierRecipientDirectoryEntry[]>([]);
@@ -52,6 +53,24 @@ export default function SupplierRecipientsScreen() {
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
+
+  // MISE-005WT: pin Settings suppliers directory entry.supplierName to ASCII C.
+  // Soft-null / Unicode-padded supplier names fall through to
+  // settings.suppliers.supplierName.none without inventing clean supplier
+  // identity from NBSP/em-space padding, and without letting Unicode-only
+  // space or empty string render a blank-looking supplierName Text or a11y /
+  // notice token. Leave suppliers-settings rename prep (#691), supplier
+  // display-name validation / directory prep (#692), draft-email (#690),
+  // read-only email (#1032), Inventory detail item.supplier_name (#1052),
+  // Orders review recommendation.supplier_name (#1051), SupplierDraftCard
+  // order.supplier_name (#1050), Orders detail title (#1016), miseDomain
+  // draft-order (#1034), and daily-report supplier.supplierName (#1053) alone.
+  function displaySupplierName(entry: SupplierRecipientDirectoryEntry) {
+    return (
+      normalizeSettingsSuppliersEntrySupplierName(entry.supplierName) ||
+      t("settings.suppliers.supplierName.none")
+    );
+  }
 
   const load = useCallback(async () => {
     if (!restaurant) {
@@ -133,7 +152,7 @@ export default function SupplierRecipientsScreen() {
       setNotice({
         tone: "warning",
         title: copy.invalidTitle,
-        message: copy.invalidBody(entry.supplierName)
+        message: copy.invalidBody(displaySupplierName(entry))
       });
       return;
     }
@@ -159,14 +178,14 @@ export default function SupplierRecipientsScreen() {
       setNotice({
         tone: "success",
         title: copy.savedTitle,
-        message: copy.savedBody(entry.supplierName)
+        message: copy.savedBody(displaySupplierName(entry))
       });
     } catch {
       if (activeRestaurantIdRef.current !== restaurantId) return;
       setNotice({
         tone: "danger",
         title: copy.saveErrorTitle,
-        message: copy.saveErrorBody(entry.supplierName)
+        message: copy.saveErrorBody(displaySupplierName(entry))
       });
     } finally {
       actionLocksRef.current.delete(key);
@@ -218,7 +237,7 @@ export default function SupplierRecipientsScreen() {
       setNotice({
         tone: "danger",
         title: copy.renameErrorTitle,
-        message: copy.renameErrorBody(entry.supplierName)
+        message: copy.renameErrorBody(displaySupplierName(entry))
       });
     } finally {
       actionLocksRef.current.delete(key);
@@ -294,6 +313,7 @@ export default function SupplierRecipientsScreen() {
                 const saving = savingKeys.has(key);
                 const emailUnchanged = draftEmail.trim().toLowerCase() === (entry.email ?? "").toLowerCase();
                 const nameUnchanged = canonicalSupplierName(draftName) === entry.supplierName;
+                const supplierName = displaySupplierName(entry);
                 return (
                   <View
                     key={key}
@@ -308,7 +328,7 @@ export default function SupplierRecipientsScreen() {
                         />
                       </IconBadge>
                       <View style={styles.recipientCopy}>
-                        <Text style={styles.supplierName} numberOfLines={2}>{entry.supplierName}</Text>
+                        <Text style={styles.supplierName} numberOfLines={2}>{supplierName}</Text>
                         <Text style={styles.supplierMeta}>
                           {entry.source === "saved" ? copy.savedRecipient : copy.currentSupplier}
                         </Text>
@@ -323,7 +343,7 @@ export default function SupplierRecipientsScreen() {
                       <View style={styles.editor}>
                         <Text style={styles.inputLabel}>{copy.nameLabel}</Text>
                         <TextInput
-                          accessibilityLabel={copy.nameAccessibility(entry.supplierName)}
+                          accessibilityLabel={copy.nameAccessibility(supplierName)}
                           accessibilityHint={copy.nameHint}
                           autoCapitalize="words"
                           autoCorrect={false}
@@ -341,7 +361,7 @@ export default function SupplierRecipientsScreen() {
                         />
                         <Button
                           title={saving ? copy.saving : copy.rename}
-                          accessibilityLabel={copy.renameAccessibility(entry.supplierName)}
+                          accessibilityLabel={copy.renameAccessibility(supplierName)}
                           accessibilityHint={copy.renameHint}
                           variant="secondary"
                           fullWidth
@@ -350,7 +370,7 @@ export default function SupplierRecipientsScreen() {
                         />
                         <Text style={styles.inputLabel}>{copy.emailLabel}</Text>
                         <TextInput
-                          accessibilityLabel={copy.emailAccessibility(entry.supplierName)}
+                          accessibilityLabel={copy.emailAccessibility(supplierName)}
                           accessibilityHint={copy.emailHint}
                           autoCapitalize="none"
                           autoComplete="email"
@@ -370,7 +390,7 @@ export default function SupplierRecipientsScreen() {
                         />
                         <Button
                           title={saving ? copy.saving : copy.save}
-                          accessibilityLabel={copy.saveAccessibility(entry.supplierName)}
+                          accessibilityLabel={copy.saveAccessibility(supplierName)}
                           accessibilityHint={copy.saveHint}
                           variant="secondary"
                           fullWidth
@@ -379,7 +399,7 @@ export default function SupplierRecipientsScreen() {
                         />
                       </View>
                     ) : (
-                      <View accessible accessibilityLabel={copy.readOnlyEmailAccessibility(entry.supplierName, entry.email)}>
+                      <View accessible accessibilityLabel={copy.readOnlyEmailAccessibility(supplierName, entry.email)}>
                         <Text style={styles.readOnlyLabel}>{copy.emailLabel}</Text>
                         <Text style={[styles.readOnlyEmail, !entry.email && styles.missingEmail]}>
                           {entry.email ?? copy.notConfigured}
