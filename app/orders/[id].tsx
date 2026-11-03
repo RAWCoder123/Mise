@@ -35,6 +35,7 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityBlockerCode
 } from "../../services/domain/purchaseAuthority";
+import { normalizeOrdersDetailActionRecipient } from "../../services/domain/presentationOrdersDetailActionRecipientIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -764,8 +765,12 @@ export default function OrderDraftDetailScreen() {
               accessibilityLabel={usingLocalDemo
                 ? t("orders.detail.action.simulateAccessibility", { supplier: visibleOrder.supplier_name })
                 : t("orders.detail.action.approveAndSendAccessibility", {
+                    // MISE-005XI: soft-null blank / Unicode-padded / control-bearing
+                    // recipient mailboxes before a11y interpolation.
                     supplier: visibleOrder.supplier_name,
-                    recipient: visibleEmailPayload?.to ?? ""
+                    recipient:
+                      normalizeOrdersDetailActionRecipient(visibleEmailPayload?.to) ||
+                      t("orders.detail.action.recipient.none")
                   })}
               icon={<Send size={icon.row} color={colors.surface} strokeWidth={iconStroke} />}
               onPress={() => void sendOrder()}
