@@ -20,6 +20,7 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivityExpandTitle } from "../../services/domain/presentationActivityExpandTitleIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -161,7 +162,13 @@ export default function ActivityHistoryScreen() {
               key={event.id}
               accessibilityRole="button"
               accessibilityState={{ expanded }}
-              accessibilityLabel={t("activity.expand.accessibility", { title: event.title })}
+              accessibilityLabel={t("activity.expand.accessibility", {
+                // MISE-005XK: soft-null blank / Unicode-padded / control-bearing
+                // activity titles before expand a11y interpolation.
+                title:
+                  normalizeActivityExpandTitle(event.title) ||
+                  t("activity.expand.title.none")
+              })}
               onPress={() =>
                 setExpandedIds((current) => ({ ...current, [event.id]: !current[event.id] }))
               }
