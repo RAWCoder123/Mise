@@ -39,6 +39,7 @@ import type {
   SupplierReliabilityReason,
   SupplierReliabilityStatus
 } from "../../services/domain/supplierReliability";
+import { normalizeDailyReportSupplierName } from "../../services/domain/presentationDailyReportSupplierNameIdentity";
 import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
@@ -460,10 +461,26 @@ export default function DailyReportScreen() {
                     ) : null}
                   </View>
                   <View style={styles.reliabilityList}>
-                    {visibleReport.supplierReliability.suppliers.map((supplier) => (
+                    {visibleReport.supplierReliability.suppliers.map((supplier) => {
+                      // MISE-005WS: pin daily-report reliability-row
+                      // supplier.supplierName to ASCII C. Soft-null /
+                      // Unicode-padded names fall through to
+                      // dailyReport.supplierReliability.supplierName.none
+                      // without inventing clean supplier identity from
+                      // NBSP/em-space padding, and without letting
+                      // Unicode-only space or empty string render a
+                      // blank-looking supplierName. Leave Inventory detail
+                      // (#1052), Orders review (#1051), SupplierDraftCard
+                      // (#1050), Orders detail title (#1016), miseDomain
+                      // draft-order (#1034), and Settings suppliers
+                      // entry.supplierName alone.
+                      const displaySupplierName =
+                        normalizeDailyReportSupplierName(supplier.supplierName) ||
+                        t("dailyReport.supplierReliability.supplierName.none");
+                      return (
                       <View key={supplier.supplierId} style={styles.reliabilityRow}>
                         <View style={styles.signalHeader}>
-                          <Text style={styles.signalType}>{supplier.supplierName}</Text>
+                          <Text style={styles.signalType}>{displaySupplierName}</Text>
                           <Badge
                             label={t(reliabilityStatusKey(supplier.status))}
                             tone={reliabilityTone(supplier.status)}
@@ -500,7 +517,8 @@ export default function DailyReportScreen() {
                           />
                         ) : null}
                       </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 </>
               )}
