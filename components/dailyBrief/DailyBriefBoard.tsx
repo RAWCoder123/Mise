@@ -14,6 +14,7 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefActionTitle } from "../../services/domain/presentationDailyBriefActionTitleIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -310,7 +311,13 @@ function FindingCard({
           <View style={styles.actions}>
             <Button
               title={t("dailyBrief.action.approve")}
-              accessibilityLabel={t("dailyBrief.approveAccessibility", { title: finding.title })}
+              accessibilityLabel={t("dailyBrief.approveAccessibility", {
+                // MISE-005XN: soft-null blank / Unicode-padded / control-bearing
+                // finding titles before action a11y interpolation.
+                title:
+                  normalizeDailyBriefActionTitle(finding.title) ||
+                  t("dailyBrief.action.title.none")
+              })}
               onPress={() => void submit("approved")}
               disabled={busy || disabled}
               style={styles.actionButton}
@@ -318,7 +325,13 @@ function FindingCard({
             <Button
               title={t("dailyBrief.action.edit")}
               variant="secondary"
-              accessibilityLabel={t("dailyBrief.editAccessibility", { title: finding.title })}
+              accessibilityLabel={t("dailyBrief.editAccessibility", {
+                // MISE-005XN: soft-null blank / Unicode-padded / control-bearing
+                // finding titles before action a11y interpolation.
+                title:
+                  normalizeDailyBriefActionTitle(finding.title) ||
+                  t("dailyBrief.action.title.none")
+              })}
               onPress={() => {
                 setEditing(true);
                 setEditText(finding.recommendedAction);
@@ -329,7 +342,13 @@ function FindingCard({
             <Button
               title={t("dailyBrief.action.dismiss")}
               variant="secondary"
-              accessibilityLabel={t("dailyBrief.dismissAccessibility", { title: finding.title })}
+              accessibilityLabel={t("dailyBrief.dismissAccessibility", {
+                // MISE-005XN: soft-null blank / Unicode-padded / control-bearing
+                // finding titles before action a11y interpolation.
+                title:
+                  normalizeDailyBriefActionTitle(finding.title) ||
+                  t("dailyBrief.action.title.none")
+              })}
               onPress={() => void submit("dismissed")}
               disabled={busy || disabled}
               style={styles.actionButton}
