@@ -13,6 +13,7 @@ import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { summarizeCountSessionProgress } from "../../services/domain/inventoryCountSessions";
+import { normalizeInventoryCountLineItemName } from "../../services/domain/presentationInventoryCountLineItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -387,6 +388,21 @@ export default function InventoryCountSessionScreen() {
                       actionsEditable && visibleDetail.session.status === "in_progress";
                     const showNoteField =
                       editable || noteRaw.trim().length > 0 || (variance != null && variance !== 0);
+                    // MISE-005WX: pin Inventory count line.item_name to ASCII C.
+                    // Soft-null / Unicode-padded item names fall through to
+                    // inventory.count.itemName.none without inventing clean item
+                    // identity from NBSP/em-space padding, and without letting
+                    // Unicode-only space or empty string render a blank-looking
+                    // count-line title or a11y token. Leave Inventory hub
+                    // item.item_name (#1056), Inventory detail item_name (#1017),
+                    // Inventory detail supplier_name (#1052),
+                    // RecommendationDecisionRow item_name (#1055), Orders hub
+                    // notice item_name (#1057), SupplierDraftCard line.itemName
+                    // (#972), count subtitle restaurant.name (#1040), and draft
+                    // count/note field values alone.
+                    const itemName =
+                      normalizeInventoryCountLineItemName(line.item_name) ||
+                      t("inventory.count.itemName.none");
                     return (
                       <View
                         key={line.id}
@@ -394,7 +410,7 @@ export default function InventoryCountSessionScreen() {
                       >
                         <View style={styles.lineHeader}>
                           <View style={styles.lineCopy}>
-                            <Text style={styles.lineName}>{line.item_name}</Text>
+                            <Text style={styles.lineName}>{itemName}</Text>
                             <Text style={styles.lineMeta}>
                               {t("inventory.count.systemQty", {
                                 quantity: formatNumber(line.system_quantity_at_start),
@@ -415,7 +431,7 @@ export default function InventoryCountSessionScreen() {
                           </View>
                           <TextInput
                             accessibilityLabel={t("inventory.count.countedAccessibility", {
-                              item: line.item_name
+                              item: itemName
                             })}
                             editable={editable}
                             keyboardType="decimal-pad"
@@ -434,7 +450,7 @@ export default function InventoryCountSessionScreen() {
                         {showNoteField ? (
                           <TextInput
                             accessibilityLabel={t("inventory.count.noteAccessibility", {
-                              item: line.item_name
+                              item: itemName
                             })}
                             editable={editable}
                             value={noteRaw}
