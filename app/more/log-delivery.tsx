@@ -22,6 +22,7 @@ import {
   queueInventoryOperation,
   type DeliveryHistoryEntry
 } from "../../services/miseService";
+import { normalizeLogDeliverySelectedItemName } from "../../services/domain/presentationLogDeliverySelectedItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -271,6 +272,20 @@ export default function LogDeliveryScreen() {
     );
   }
 
+  // MISE-005WZ: pin Log Delivery selected StatusNotice / Screen subtitle
+  // selected.item_name to ASCII C. Soft-null / Unicode-padded selected item
+  // names fall through to logDelivery.selected.itemName.none without inventing
+  // clean item identity from NBSP/em-space padding, and without letting
+  // Unicode-only space or empty string render a blank-looking Screen subtitle
+  // or StatusNotice title. Leave pick-list item.item_name (#1059), history
+  // entry.itemName, Scan Item row titles, Inventory hub item.item_name (#1056),
+  // Inventory count line.item_name (#1058), Inventory detail item_name (#1017),
+  // search/filter haystack matching, and sibling supplier_name tips alone.
+  const selectedItemName = selected
+    ? normalizeLogDeliverySelectedItemName(selected.item_name) ||
+      t("logDelivery.selected.itemName.none")
+    : undefined;
+
   return (
     <Screen
       title={t("logDelivery.title")}
@@ -278,7 +293,7 @@ export default function LogDeliveryScreen() {
         tab === "history"
           ? t("logDelivery.history.subtitle")
           : selected
-            ? selected.item_name
+            ? selectedItemName
             : t("logDelivery.subtitle")
       }
       titleAlign="center"
@@ -422,7 +437,7 @@ export default function LogDeliveryScreen() {
           <>
             <StatusNotice
               tone={isCanonicalUnitReady(selected) ? "neutral" : "warning"}
-              title={selected.item_name}
+              title={selectedItemName || t("logDelivery.selected.itemName.none")}
               message={
                 isCanonicalUnitReady(selected)
                   ? t("logDelivery.form.helper", {
