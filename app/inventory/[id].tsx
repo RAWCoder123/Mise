@@ -30,6 +30,7 @@ import {
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
+import { normalizeInventoryDetailSupplierName } from "../../services/domain/presentationInventoryDetailSupplierNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -343,11 +344,29 @@ export default function InventoryDetailScreen() {
   }
 
   const busy = submittingOperation || savingSettings;
+  // MISE-005WR: pin Inventory detail subtitle item.supplier_name to ASCII C.
+  // Soft-null / Unicode-padded supplier names fall through to
+  // inventory.detail.supplierName.none without inventing clean supplier
+  // identity from NBSP/em-space padding, and without letting Unicode-only
+  // space or empty string render a blank-looking supplier before the
+  // category separator. Leave Orders review recommendation.supplier_name
+  // (#1051), SupplierDraftCard order.supplier_name (#1050), Orders detail
+  // title (#1016), miseDomain draft-order (#1034), daily-report
+  // supplier.supplierName, Settings suppliers entry.supplierName, Inventory
+  // detail title item.item_name, and Inventory detail category alone.
+  const inventoryDetailDisplaySupplierName = item
+    ? normalizeInventoryDetailSupplierName(item.supplier_name) ||
+      t("inventory.detail.supplierName.none")
+    : null;
 
   return (
     <Screen
       title={item?.item_name ?? t("inventory.detail.title")}
-      subtitle={item ? `${item.supplier_name} · ${item.category}` : t("inventory.detail.subtitle")}
+      subtitle={
+        item
+          ? `${inventoryDetailDisplaySupplierName} · ${item.category}`
+          : t("inventory.detail.subtitle")
+      }
       loading={loading}
       keyboardAware
       action={
