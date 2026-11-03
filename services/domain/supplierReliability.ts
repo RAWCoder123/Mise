@@ -1,5 +1,6 @@
 import type { SupplierOrder } from "../../types/mise";
 import { toDateKeyInTimeZone } from "../../utils/format";
+import { normalizeDailyReportSupplierName } from "./presentationDailyReportSupplierNameIdentity";
 
 export type SupplierDeliveryStatus =
   | "unverified"
@@ -132,9 +133,16 @@ export function buildSupplierReliabilitySummary(input: {
     if (!order) continue;
     const key = order.supplier_id.trim();
     if (!key) continue;
+    // MISE-005WS: pin daily-report reliability supplierName to ASCII C.
+    // Soft-null / Unicode-padded order.supplier_name must not invent a clean
+    // supplier label via Unicode `.trim()` before the daily-report row renders
+    // supplier.supplierName. Leave Settings suppliers entry.supplierName,
+    // Inventory detail item.supplier_name (#1052), Orders review (#1051),
+    // SupplierDraftCard (#1050), Orders detail title (#1016), and miseDomain
+    // draft-order (#1034) alone.
     const current = suppliers.get(key) ?? {
       supplierId: order.supplier_id,
-      supplierName: order.supplier_name.trim(),
+      supplierName: normalizeDailyReportSupplierName(order.supplier_name) ?? "",
       deliveries: [],
       orders: [],
       items: []
