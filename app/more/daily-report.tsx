@@ -43,6 +43,7 @@ import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
 } from "../../services/domain/wasteAnalysis";
+import { normalizeDailyReportDeliveriesLineItemName } from "../../services/domain/presentationDailyReportDeliveriesLineItemNameIdentity";
 
 function BackAction() {
   const { t } = useLocale();
@@ -388,7 +389,17 @@ export default function DailyReportScreen() {
                 visibleReport.deliveriesToday.lines.map((line) => (
                   <Text key={line.id} style={styles.topItemLine}>
                     {t("dailyReport.deliveries.line", {
-                      item: line.itemName,
+                      // MISE-005XE: pin Daily Report deliveries.line itemName
+                      // Soft-null empty / Unicode-padded / control-bearing
+                      // names before dailyReport.deliveries.line interpolations
+                      // so blank-looking identity cannot bypass the intentional
+                      // localized dailyReport.deliveries.line.itemName.none.
+                      // Leave waste.topItem itemName, sales top-sellers
+                      // item.itemName, waste.event.unknownItem paths, and React
+                      // list keys alone.
+                      item:
+                        normalizeDailyReportDeliveriesLineItemName(line.itemName) ||
+                        t("dailyReport.deliveries.line.itemName.none"),
                       qty:
                         line.quantity != null
                           ? `${formatNumber(line.quantity)}${line.unit ? ` ${line.unit}` : ""}`
