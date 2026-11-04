@@ -79,9 +79,36 @@ export function presentFindingRecoveryActions(
 }
 
 /**
+ * ASCII-only end trim for machine missing-data codes and evidence IDs.
+ * Unicode `String#trim` would strip NBSP / em-space padding and invent equality
+ * with known gap codes or clean inventory IDs.
+ */
+export function asciiTrimFindingRecoveryToken(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+function hasControlCharacters(value: string) {
+  return /[\u0000-\u001f\u007f]/.test(value);
+}
+
+/**
+ * Canonicalize a finding recovery token under ASCII C. Soft-null when empty,
+ * still Unicode-padded, or containing ASCII controls — never invent a clean
+ * machine code / ID / menu name via Unicode trim.
+ */
+export function canonicalizeFindingRecoveryToken(value: string): string | null {
+  const trimmed = asciiTrimFindingRecoveryToken(value);
+  if (!trimmed) return null;
+  if (trimmed !== trimmed.trim()) return null;
+  if (hasControlCharacters(trimmed)) return null;
+  return trimmed;
+}
+
+/**
  * Localize machine missing-data codes for the Daily Brief card. Unknown codes
  * stay visible as raw tokens so operators still see the gap without inventing
- * a friendly label.
+ * a friendly label. Unicode-padded / control-bearing codes soft-null instead of
+ * inventing a clean known-code match or English "menu item" name.
  */
 export function presentFindingMissingDataLabels(
   missingData: readonly string[]
@@ -90,12 +117,23 @@ export function presentFindingMissingDataLabels(
   const seen = new Set<string>();
 
   for (const code of missingData) {
-    const normalized = code.trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
+    if (typeof code !== "string" || !code.trim()) continue;
+    const asciiCode = asciiTrimFindingRecoveryToken(code);
+    if (!asciiCode) continue;
 
-    if (normalized.startsWith("menu_mapping:")) {
-      const name = normalized.slice("menu_mapping:".length).trim() || "menu item";
+    // Parse menu_mapping:* before full-token canonicalize so a Unicode-padded
+    // dish name cannot soft-null the prefix and erase the intentional generic
+    // mapping label — and never invent English "menu item".
+    if (asciiCode === "menu_mapping" || asciiCode.startsWith("menu_mapping:")) {
+      const rawName = asciiCode === "menu_mapping" ? "" : asciiCode.slice("menu_mapping:".length);
+      const name = canonicalizeFindingRecoveryToken(rawName);
+      const dedupeKey = name ? `menu_mapping:${name}` : "menu_mapping";
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      if (!name) {
+        labels.push({ kind: "known", labelKey: "dailyBrief.missing.menu_mapping" });
+        continue;
+      }
       labels.push({
         kind: "mapping",
         labelKey: "dailyBrief.missing.menu_mapping_named",
@@ -103,6 +141,10 @@ export function presentFindingMissingDataLabels(
       });
       continue;
     }
+
+    const normalized = canonicalizeFindingRecoveryToken(code);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
 
     const knownKey = knownMissingDataLabelKey(normalized);
     if (knownKey) {
@@ -152,7 +194,21 @@ function recoveryForMissingDataCode(
   code: string,
   inventoryHref: `/inventory/${string}` | null
 ): FindingRecoveryAction | null {
-  const normalized = code.trim();
+  if (typeof code !== "string" || !code.trim()) return null;
+  const asciiCode = asciiTrimFindingRecoveryToken(code);
+  if (!asciiCode) return null;
+
+  // menu_mapping recoveries do not depend on inventing a clean dish name, so
+  // Unicode-padded names still route to recipes after ASCII prefix detection.
+  if (asciiCode === "menu_mapping" || asciiCode.startsWith("menu_mapping:")) {
+    return {
+      href: "/settings/recipes",
+      labelKey: "dailyBrief.recovery.recipes",
+      reason: "menu_mapping"
+    };
+  }
+
+  const normalized = canonicalizeFindingRecoveryToken(code);
   if (!normalized) return null;
 
   if (normalized === "verified_physical_count") {
@@ -175,14 +231,6 @@ function recoveryForMissingDataCode(
           labelKey: "dailyBrief.recovery.inventoryHub",
           reason: "verified_canonical_unit"
         };
-  }
-
-  if (normalized === "menu_mapping" || normalized.startsWith("menu_mapping:")) {
-    return {
-      href: "/settings/recipes",
-      labelKey: "dailyBrief.recovery.recipes",
-      reason: "menu_mapping"
-    };
   }
 
   if (normalized === "daily_sales") {
@@ -217,7 +265,7 @@ function recoveryForEvidence(
 ): FindingRecoveryAction | null {
   switch (entry.type) {
     case "inventory_item": {
-      const id = entry.id.trim();
+      const id = canonicalizeFindingRecoveryToken(entry.id);
       if (!id) return null;
       return {
         href: `/inventory/${encodeURIComponent(id)}`,
@@ -302,6 +350,10 @@ function firstEvidenceId(
   evidence: readonly FindingEvidenceReference[],
   type: FindingEvidenceReference["type"]
 ): string | null {
-  const match = evidence.find((entry) => entry.type === type && entry.id.trim());
-  return match?.id.trim() ?? null;
+  for (const entry of evidence) {
+    if (entry.type !== type) continue;
+    const id = canonicalizeFindingRecoveryToken(entry.id);
+    if (id) return id;
+  }
+  return null;
 }

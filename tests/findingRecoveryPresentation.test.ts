@@ -148,6 +148,80 @@ test("named menu mapping gaps localize without inventing recovery routes", () =>
   assert.equal(formatted, "Verified unit, Recipe mapping: Olive oil");
 });
 
+test("Unicode padding invents via trim and is soft-nulled for finding recovery tokens", () => {
+  const em = "\u2003";
+  const nbsp = "\u00a0";
+  const paddedCode = `${em}verified_physical_count${em}`;
+  const paddedName = `menu_mapping:${em}Basil pesto${em}`;
+  const unicodeOnlyName = `menu_mapping:${em}`;
+
+  // Inventing proof: Unicode trim would invent clean machine tokens / names.
+  assert.equal(paddedCode.trim(), "verified_physical_count");
+  assert.equal(`${em}Basil pesto${em}`.trim(), "Basil pesto");
+  assert.equal(Boolean(em), true);
+
+  // Recovery must refuse inventing a known-code match from Unicode padding.
+  const paddedActions = presentFindingRecoveryActions(
+    sampleFinding({
+      freshness: {
+        state: "incomplete",
+        asOf: "2026-08-31T10:00:00.000Z",
+        staleAfter: "2026-09-02T10:00:00.000Z",
+        missingData: [paddedCode]
+      },
+      evidence: [],
+      affectedWorkflow: "other"
+    })
+  );
+  assert.equal(paddedActions.length, 0);
+
+  // Soft-null padded / empty mapping names → generic menu_mapping label, never
+  // invent English "menu item". Prefix still recovers to recipes.
+  assert.deepEqual(presentFindingMissingDataLabels([paddedName, unicodeOnlyName, "menu_mapping:"]), [
+    { kind: "known", labelKey: "dailyBrief.missing.menu_mapping" }
+  ]);
+  assert.doesNotMatch(
+    JSON.stringify(presentFindingMissingDataLabels([unicodeOnlyName])),
+    /menu item/i
+  );
+  const paddedMappingActions = presentFindingRecoveryActions(
+    sampleFinding({
+      freshness: {
+        state: "incomplete",
+        asOf: "2026-08-31T10:00:00.000Z",
+        staleAfter: "2026-09-02T10:00:00.000Z",
+        missingData: [paddedName]
+      },
+      evidence: [],
+      affectedWorkflow: "other"
+    })
+  );
+  assert.equal(paddedMappingActions[0]?.href, "/settings/recipes");
+  assert.equal(paddedMappingActions[0]?.reason, "menu_mapping");
+
+  // Unicode-padded inventory evidence IDs must not invent deep-links.
+  const paddedItem = presentFindingRecoveryActions(
+    sampleFinding({
+      freshness: {
+        state: "fresh",
+        asOf: "2026-08-31T10:00:00.000Z",
+        staleAfter: "2026-09-02T10:00:00.000Z",
+        missingData: []
+      },
+      evidence: [
+        {
+          type: "inventory_item",
+          id: `${nbsp}item-basil${nbsp}`,
+          observedAt: "2026-08-31T10:00:00.000Z",
+          summary: "Basil"
+        }
+      ],
+      affectedWorkflow: "other"
+    })
+  );
+  assert.equal(paddedItem.length, 0);
+});
+
 test("unmapped sale findings recover through recipes workflow", () => {
   const actions = presentFindingRecoveryActions(
     sampleFinding({
