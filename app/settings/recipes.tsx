@@ -24,6 +24,7 @@ import {
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
+import { normalizeRecipesDishMenuItemName } from "../../services/domain/presentationRecipesDishMenuItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -283,7 +284,18 @@ export default function RecipeBaselinesScreen() {
     try {
       await confirmRecipeBaselineComplete(restaurantId, item.menuItemId, item.recipeRevision);
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice(t("recipes.notice.confirmed", { item: item.menu_item_name }));
+      // MISE-005XT: soft-null blank / Unicode-padded / control-bearing dish
+      // names before recipes.notice.confirmed interpolation. Soft-null falls
+      // through to recipes.row.menuItemName.none without inventing clean dish
+      // identity from NBSP/em-space padding. Leave Recipes ingredient.itemName
+      // (#1067), recipes.notice.linked draft tokens, setup dish names (#862),
+      // inventory recipe-mapping menuItemName (#863), demo baseline (#905),
+      // recipe-authority hydrate (#935), recipe-baseline inventory itemName
+      // (#1035), and POS missing-recipe badges alone.
+      const confirmedDishName =
+        normalizeRecipesDishMenuItemName(item.menu_item_name) ||
+        t("recipes.row.menuItemName.none");
+      setNotice(t("recipes.notice.confirmed", { item: confirmedDishName }));
       await load();
     } catch {
       if (activeRestaurantIdRef.current === restaurantId) setError(t("recipes.error.confirm"));
@@ -640,6 +652,18 @@ function RecipeRow({
     }
   }
 
+  // MISE-005XT: pin Settings Recipes dish menu_item_name to ASCII C. Soft-null
+  // / Unicode-padded dish names fall through to recipes.row.menuItemName.none
+  // without inventing clean dish identity from NBSP/em-space padding, and
+  // without letting Unicode-only space or empty string render a blank-looking
+  // recipeName Text. Leave Recipes ingredient.itemName (#1067),
+  // recipes.notice.linked draft tokens, setup dish names (#862), inventory
+  // recipe-mapping menuItemName (#863), demo baseline (#905), recipe-authority
+  // hydrate (#935), recipe-baseline inventory itemName (#1035), and POS
+  // missing-recipe badges alone.
+  const dishMenuItemName =
+    normalizeRecipesDishMenuItemName(item.menu_item_name) || t("recipes.row.menuItemName.none");
+
   return (
     <View style={styles.recipeRow}>
       <View style={styles.statusRail} />
@@ -649,7 +673,7 @@ function RecipeRow({
         </IconBadge>
         <View style={styles.recipeText}>
           <View style={styles.recipeTop}>
-            <Text style={styles.recipeName}>{item.menu_item_name}</Text>
+            <Text style={styles.recipeName}>{dishMenuItemName}</Text>
             <Text style={styles.soldText}>
               {t(item.todayQuantitySold === 1 ? "recipes.row.sold.one" : "recipes.row.sold.other", {
                 count: formatNumber(item.todayQuantitySold)
