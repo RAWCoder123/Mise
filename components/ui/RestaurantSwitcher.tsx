@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, conceptTypography, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
+import { normalizeRestaurantSwitcherName } from "../../services/domain/presentationRestaurantSwitcherNameIdentity";
 
 /**
  * Compact restaurant chip that sits directly under the Mise wordmark.
@@ -15,11 +16,24 @@ import { useLocale } from "../../contexts/LocaleContext";
 export function RestaurantSwitcher({ name }: { name: string }) {
   const { t } = useLocale();
 
+  // MISE-005XS: soft-null blank / Unicode-padded / control-bearing restaurant
+  // names before RestaurantSwitcher a11y interpolation. Soft-null falls through
+  // to screen.openRestaurantSettings.none without inventing clean restaurant
+  // identity from NBSP/em-space padding. Leave chip display Text `{name}`,
+  // Autonomy subtitle restaurant.name (#1043), Home greeting restaurant.name
+  // (#1044), Ask Mise restaurant.name (#1045), and Today screen title
+  // restaurant name (#968) alone.
+  const restaurantSwitcherName = normalizeRestaurantSwitcherName(name);
+
   return (
     <View style={styles.row}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t("screen.openRestaurantSettings", { restaurant: name })}
+        accessibilityLabel={
+          restaurantSwitcherName
+            ? t("screen.openRestaurantSettings", { restaurant: restaurantSwitcherName })
+            : t("screen.openRestaurantSettings.none")
+        }
         hitSlop={HIT_SLOP}
         onPress={() => router.push("/settings")}
         style={({ pressed }) => [styles.chip, pressed && styles.pressed]}

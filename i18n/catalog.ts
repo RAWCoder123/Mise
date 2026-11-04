@@ -34,6 +34,7 @@ const en = {
   "screen.openTodayHint": "Shows today’s operational tasks and alerts",
   "screen.currentRestaurant": "Current restaurant: {restaurant}",
   "screen.openRestaurantSettings": "Open restaurant settings for {restaurant}",
+  "screen.openRestaurantSettings.none": "Open restaurant settings",
   "screen.openRestaurantSettingsHint": "Opens restaurant settings and workspace selection",
 
   "boot.title": "Opening Mise",
@@ -2332,6 +2333,7 @@ const es = {
   "screen.openTodayHint": "Muestra las tareas operativas y alertas de hoy",
   "screen.currentRestaurant": "Restaurante actual: {restaurant}",
   "screen.openRestaurantSettings": "Abrir los ajustes de {restaurant}",
+  "screen.openRestaurantSettings.none": "Abrir los ajustes del restaurante",
   "screen.openRestaurantSettingsHint": "Abre los ajustes del restaurante y la selección de espacio de trabajo",
 
   "boot.title": "Abriendo Mise",
@@ -4626,6 +4628,7 @@ const zhHans = {
   "screen.openTodayHint": "显示今日运营任务和提醒",
   "screen.currentRestaurant": "当前餐厅：{restaurant}",
   "screen.openRestaurantSettings": "打开 {restaurant} 的餐厅设置",
+  "screen.openRestaurantSettings.none": "打开餐厅设置",
   "screen.openRestaurantSettingsHint": "打开餐厅设置和工作区选择",
 
   "boot.title": "正在打开 Mise",
