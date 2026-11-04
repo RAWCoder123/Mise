@@ -87,6 +87,45 @@ export interface SupplierOrderDeliveryEvidence {
   notes: string | null;
 }
 
+/** Cap completed-order line reads so one oversized delivery cannot blow the client. */
+export const SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX = 100;
+
+export interface CompletedSupplierOrderReceiveLine {
+  deliveryId: string;
+  inventoryItemId: string;
+  /** Soft-null when empty, Unicode-padded, or control-bearing; UI owns localized none copy. */
+  itemName: string | null;
+  /** Soft-null when empty, Unicode-padded, or control-bearing; UI owns localized not-set copy. */
+  unit: string | null;
+  orderedQuantity: number | null;
+  receivedQuantity: number;
+  damagedQuantity: number;
+  missingQuantity: number;
+  /** received − ordered when ordered is known; otherwise null. */
+  discrepancy: number | null;
+  hasDiscrepancy: boolean;
+  shortShip: boolean;
+  overReceive: boolean;
+  discrepancyReason: string | null;
+  receivedAt: string;
+}
+
+export interface CompletedSupplierOrderReceiveSummary {
+  orderId: string;
+  lines: CompletedSupplierOrderReceiveLine[];
+  discrepancyCount: number;
+  shortShipCount: number;
+  overReceiveCount: number;
+  receivedAt: string | null;
+}
+
+export interface ReceiveSummaryInventoryItem {
+  id: string;
+  restaurant_id: string;
+  item_name: string;
+  unit: string;
+}
+
 interface SupplierAccumulator {
   supplierId: string;
   supplierName: string;
@@ -213,6 +252,163 @@ export function buildSupplierOrderDeliveryEvidence(input: {
       } satisfies SupplierOrderDeliveryEvidence;
     });
   return evidence.sort((left, right) => right.receivedAt.localeCompare(left.receivedAt));
+}
+
+/**
+ * Builds a read-only ordered-versus-received line summary for a supplier order
+ * from authoritative `supplier_deliveries` / `supplier_delivery_items` evidence.
+ * Item names and units soft-null when empty/Unicode-padded/control-bearing so the
+ * Orders detail UI owns localized fallbacks without inventing identity.
+ */
+export function buildCompletedSupplierOrderReceiveSummary(input: {
+  restaurantId: string;
+  order: SupplierOrder;
+  deliveries: readonly SupplierDeliveryRecord[];
+  items: readonly SupplierDeliveryItemRecord[];
+  inventoryItems?: readonly ReceiveSummaryInventoryItem[];
+}): CompletedSupplierOrderReceiveSummary {
+  const restaurantId = input.restaurantId.trim();
+  const orderId = input.order.id.trim();
+  if (!restaurantId) throw new Error("Supplier receive summary requires a restaurant workspace.");
+  if (!orderId) throw new Error("Supplier receive summary requires a supplier order.");
+  if (input.order.restaurant_id !== restaurantId) {
+    throw new Error("Supplier receive summary received cross-restaurant evidence.");
+  }
+  requireTenantScope(restaurantId, [input.order], input.deliveries, input.items);
+  if ((input.inventoryItems ?? []).some((item) => item.restaurant_id !== restaurantId)) {
+    throw new Error("Supplier receive summary received cross-restaurant inventory rows.");
+  }
+
+  const inventoryById = new Map(
+    (input.inventoryItems ?? []).map((item) => [item.id, item] as const)
+  );
+  const deliveriesForOrder = input.deliveries
+    .filter((delivery) => delivery.supplier_order_id === orderId)
+    .slice()
+    .sort((left, right) => left.received_at.localeCompare(right.received_at));
+
+  const lines: CompletedSupplierOrderReceiveLine[] = [];
+  for (const delivery of deliveriesForOrder) {
+    const deliveryLines = input.items
+      .filter((item) => item.delivery_id === delivery.id)
+      .slice()
+      .sort(
+        (left, right) =>
+          left.inventory_item_id.localeCompare(right.inventory_item_id) ||
+          left.id.localeCompare(right.id)
+      );
+    for (const item of deliveryLines) {
+      if (lines.length >= SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX) break;
+      const orderedQuantity = finiteNonNegative(item.ordered_quantity);
+      const receivedQuantity = finiteNonNegative(item.received_quantity) ?? 0;
+      const damagedQuantity = finiteNonNegative(item.damaged_quantity) ?? 0;
+      const missingQuantity = finiteNonNegative(item.missing_quantity) ?? 0;
+      const discrepancy =
+        orderedQuantity == null ? null : receivedQuantity - orderedQuantity;
+      const shortShip =
+        missingQuantity > 0 || (orderedQuantity != null && receivedQuantity < orderedQuantity);
+      const overReceive = orderedQuantity != null && receivedQuantity > orderedQuantity;
+      const inventoryItem = inventoryById.get(item.inventory_item_id);
+      const itemName = normalizeReceiveSummaryItemName(inventoryItem?.item_name);
+      const unit =
+        normalizeReceiveSummaryUnit(inventoryItem?.unit) ??
+        normalizeReceiveSummaryUnit(
+          typeof item.canonical_unit === "string" ? item.canonical_unit : null
+        );
+      const discrepancyReason = normalizeReceiveSummaryDiscrepancyReason(item.discrepancy_reason);
+      lines.push({
+        deliveryId: delivery.id,
+        inventoryItemId: item.inventory_item_id,
+        itemName,
+        unit,
+        orderedQuantity,
+        receivedQuantity,
+        damagedQuantity,
+        missingQuantity,
+        discrepancy,
+        hasDiscrepancy:
+          damagedQuantity > 0 ||
+          missingQuantity > 0 ||
+          discrepancyReason != null ||
+          shortShip ||
+          overReceive,
+        shortShip,
+        overReceive,
+        discrepancyReason,
+        receivedAt: delivery.received_at
+      });
+    }
+    if (lines.length >= SUPPLIER_ORDER_RECEIVE_SUMMARY_LINE_MAX) break;
+  }
+
+  return {
+    orderId,
+    lines,
+    discrepancyCount: lines.filter((line) => line.hasDiscrepancy).length,
+    shortShipCount: lines.filter((line) => line.shortShip).length,
+    overReceiveCount: lines.filter((line) => line.overReceive).length,
+    receivedAt: deliveriesForOrder.length
+      ? deliveriesForOrder[deliveriesForOrder.length - 1]!.received_at
+      : null
+  };
+}
+
+/** ASCII-only end trim; Unicode `String#trim` would invent clean display tokens. */
+export function asciiTrimReceiveSummaryToken(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+function hasAsciiControls(value: string) {
+  return /[\u0000-\u001f\u007f]/.test(value);
+}
+
+function hasDisallowedDiscrepancyReasonControls(value: string) {
+  // Operator-note style: allow LF / TAB / CR; reject other C0/DEL controls.
+  return /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
+}
+
+/**
+ * Soft-null empty / Unicode-padded / control-bearing item names so the UI can
+ * own `orders.detail.receivedSummary.itemName.none` without inventing identity.
+ */
+export function normalizeReceiveSummaryItemName(
+  value: string | null | undefined
+): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") return null;
+  if (!value.trim()) return null;
+  const trimmed = asciiTrimReceiveSummaryToken(value);
+  if (!trimmed) return null;
+  if (trimmed !== trimmed.trim()) return null;
+  if (hasAsciiControls(trimmed)) return null;
+  return trimmed;
+}
+
+/**
+ * Soft-null empty / Unicode-padded / control-bearing units. Never invents
+ * `"each"` when both inventory and delivery canonical units are unusable.
+ */
+export function normalizeReceiveSummaryUnit(
+  value: string | null | undefined
+): string | null {
+  return normalizeReceiveSummaryItemName(value);
+}
+
+/**
+ * Soft-null empty / Unicode-padded discrepancy reasons. Allows LF/TAB/CR for
+ * multi-line operator notes; rejects other controls and Unicode inventing trim.
+ */
+export function normalizeReceiveSummaryDiscrepancyReason(
+  value: string | null | undefined
+): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") return null;
+  if (!value.trim()) return null;
+  const trimmed = asciiTrimReceiveSummaryToken(value);
+  if (!trimmed) return null;
+  if (trimmed !== trimmed.trim()) return null;
+  if (hasDisallowedDiscrepancyReasonControls(trimmed)) return null;
+  return trimmed;
 }
 
 function summarizeSupplier(
