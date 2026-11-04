@@ -33,6 +33,7 @@ import {
   queueOperationalFindingDecision,
   type OperatorTask
 } from "../../services/miseService";
+import { normalizeTodayFloorNotesRowTitle } from "../../services/domain/presentationTodayFloorNotesRowTitleIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -396,7 +397,12 @@ export default function TodayScreen() {
                       <View key={note.id} style={styles.floorNoteCard}>
                         <Pressable
                           accessibilityRole={focusRoute ? "button" : undefined}
-                          accessibilityLabel={t("today.floorNotes.rowAccessibility", { title: note.title })}
+                          accessibilityLabel={t("today.floorNotes.rowAccessibility", {
+                            // MISE-005XX: soft-null blank / Unicode-padded titles before a11y interpolation.
+                            title:
+                              normalizeTodayFloorNotesRowTitle(note.title) ||
+                              t("today.floorNotes.rowTitle.none")
+                          })}
                           disabled={!focusRoute}
                           onPress={focusRoute ? () => router.push(focusRoute as never) : undefined}
                           style={({ pressed }) => [styles.floorNoteMain, pressed && focusRoute && styles.pressed]}
