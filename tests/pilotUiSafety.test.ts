@@ -31,6 +31,22 @@ test("Today keeps floor-note completion behind the restaurant role gate", () => 
   assert.match(screen, /disabled=\{!floorNotesEditable\}/);
 });
 
+test("Insights dispatches due recalculations before brief load and surfaces attention", () => {
+  const insights = readFileSync("app/(tabs)/insights.tsx", "utf8");
+  const scheduled = readFileSync("services/application/scheduledRecalculations.ts", "utf8");
+
+  assert.match(insights, /runScheduledRecalculations\(\{/);
+  assert.match(insights, /restaurantTimeZone: restaurant\.timezone/);
+  assert.match(insights, /setRecalcAttention\(recalculation\)/);
+  assert.match(insights, /home\.recalculation\.title/);
+  assert.match(insights, /router\.push\("\/more\/activity"\)/);
+  assert.match(
+    insights,
+    /runScheduledRecalculations[\s\S]*flushQueuedOperationalFindingDecisions[\s\S]*fetchDailyOperationalBrief/
+  );
+  assert.match(scheduled, /Home, Today, and Insights/);
+});
+
 test("POS readiness failures remain visible and retryable instead of failing open", () => {
   const pos = readFileSync("app/settings/pos.tsx", "utf8");
   assert.match(pos, /setReadinessLoadError\(true\)/);

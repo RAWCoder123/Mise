@@ -14,9 +14,10 @@ const repository = getMiseRepository();
  * reports back only what an operator needs to see.
  *
  * Mise has no scheduler and no machine-actor auth path yet, so this is called
- * from an authenticated operator session. A restaurant nobody opens receives no
- * recalculation until someone does; that limitation is recorded in the ledger
- * migration header rather than papered over here.
+ * from authenticated operator sessions on Home, Today, and Insights. A
+ * restaurant nobody opens receives no recalculation until someone does; that
+ * limitation is recorded in the ledger migration header rather than papered
+ * over here.
  *
  * Never throws. A background loop that breaks the screen it is trying to keep
  * accurate is worse than one that quietly defers.
