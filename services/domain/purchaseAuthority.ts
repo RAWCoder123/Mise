@@ -166,6 +166,28 @@ export interface PurchaseAuthorityBlockerRecovery {
 }
 
 /**
+ * ASCII-only end trim for inventory evidence IDs used in recovery deep links.
+ * Unicode `String#trim` would strip NBSP / em-space padding and invent equality
+ * with a clean inventory ID.
+ */
+export function asciiTrimPurchaseAuthorityInventoryId(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * Canonicalize an inventory item ID under ASCII C for recovery deep links.
+ * Soft-null when empty, still Unicode-padded, or containing ASCII controls —
+ * never invent a clean inventory deep-link via Unicode trim.
+ */
+export function canonicalizePurchaseAuthorityInventoryId(value: string): string | null {
+  const trimmed = asciiTrimPurchaseAuthorityInventoryId(value);
+  if (!trimmed) return null;
+  if (trimmed !== trimmed.trim()) return null;
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+  return trimmed;
+}
+
+/**
  * Maps a fail-closed purchase-authority blocker to an existing operator
  * recovery surface. Returns null when the blocker is informational only
  * (wait, dismiss, or founder/ops control) or evidence is insufficient to
@@ -175,7 +197,7 @@ export function resolvePurchaseAuthorityBlockerRecovery(
   code: PurchaseAuthorityBlockerCode,
   evidence: Pick<PurchaseAuthorityEvidence, "inventoryItemId">
 ): PurchaseAuthorityBlockerRecovery | null {
-  const inventoryItemId = evidence.inventoryItemId.trim();
+  const inventoryItemId = canonicalizePurchaseAuthorityInventoryId(evidence.inventoryItemId);
   const inventoryHref = inventoryItemId
     ? (`/inventory/${encodeURIComponent(inventoryItemId)}` as const)
     : null;

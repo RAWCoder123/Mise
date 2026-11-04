@@ -151,3 +151,30 @@ test("purchase authority blockers resolve to existing recovery surfaces", () => 
     null
   );
 });
+
+test("purchase authority recovery refuses Unicode-trim inventing of inventory IDs", () => {
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("canonical_unit_unverified", {
+      inventoryItemId: "\u00a0item-42\u00a0"
+    }),
+    null
+  );
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("supplier_missing", {
+      inventoryItemId: "\u2003item-42\u2003"
+    }),
+    { href: "/settings/suppliers", labelKey: "orders.authority.recovery.suppliers" }
+  );
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("supplier_mismatch", {
+      inventoryItemId: "item-42\u0007"
+    }),
+    { href: "/settings/suppliers", labelKey: "orders.authority.recovery.suppliers" }
+  );
+  assert.deepEqual(
+    resolvePurchaseAuthorityBlockerRecovery("canonical_unit_unverified", {
+      inventoryItemId: "  item-42  "
+    }),
+    { href: "/inventory/item-42", labelKey: "orders.authority.recovery.inventoryItem" }
+  );
+});

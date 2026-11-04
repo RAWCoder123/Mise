@@ -31,6 +31,8 @@ test("blocked purchase recommendations surface blocker-specific recovery deep li
   ]);
 
   assert.match(domain, /export function resolvePurchaseAuthorityBlockerRecovery/);
+  assert.match(domain, /export function canonicalizePurchaseAuthorityInventoryId/);
+  assert.match(domain, /canonicalizePurchaseAuthorityInventoryId\(evidence\.inventoryItemId\)/);
   assert.match(row, /resolvePurchaseAuthorityBlockerRecovery\(blocker\.code, authority\.evidence\)/);
   assert.match(row, /router\.push\(recovery\.href as never\)/);
   assert.match(row, /t\(recovery\.labelKey\)/);
@@ -39,6 +41,7 @@ test("blocked purchase recommendations surface blocker-specific recovery deep li
   assert.match(catalog, /"orders\.authority\.recovery\.count": "Iniciar conteo de inventario"/);
   assert.match(catalog, /"orders\.authority\.recovery\.count": "开始库存盘点"/);
   assert.doesNotMatch(row, /\.from\("purchase_recommendations"\)/);
+  assert.doesNotMatch(domain, /evidence\.inventoryItemId\.trim\(\)/);
 });
 
 test("home one-tap approve surfaces purchase-authority blockers with recovery deep links", async () => {
