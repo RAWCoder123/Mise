@@ -10,11 +10,12 @@ import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MiseMark } from "../components/ui/BrandLockup";
 import { Screen } from "../components/ui/Screen";
-import { RetryNotice } from "../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, radii, typography } from "../constants/theme";
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
 import { DEMO_DATASET } from "../services/demoData";
+import { runScheduledRecalculations } from "../services/application/scheduledRecalculations";
 import {
   answerAskMise,
   fetchInsights,
@@ -22,6 +23,7 @@ import {
   type TodayCommandCenterSummary
 } from "../services/miseService";
 import { presentOperationalTodayTask } from "../services/presentation/operationsPresentation";
+import type { RecalculationAttentionSummary } from "../services/presentation/recalculationPresentation";
 import { captureMiseError } from "../services/telemetry";
 import type { Insight } from "../types/mise";
 import type { OperationalTodayTask } from "../services/domain/todayTasks";
@@ -70,6 +72,8 @@ export default function AskMiseScreen() {
   const [asking, setAsking] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recalcAttention, setRecalcAttention] =
+    useState<RecalculationAttentionSummary | null>(null);
   const seededRef = useRef(false);
   const chatRef = useRef<ScrollView>(null);
   const requestIdRef = useRef(0);
@@ -91,6 +95,7 @@ export default function AskMiseScreen() {
     setMessages([]);
     setThinking(null);
     setAsking(false);
+    setRecalcAttention(null);
     seededRef.current = false;
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
@@ -106,6 +111,16 @@ export default function AskMiseScreen() {
     setLoading(true);
     setError(null);
     try {
+      // Dispatch any due recalculation cycles before grounding answers, so Ask
+      // Mise reads post-recalculation today/insights state rather than racing
+      // Home-only dispatch when operators stay in chat during service.
+      const recalculation = await runScheduledRecalculations({
+        restaurantId,
+        restaurantTimeZone: restaurant.timezone
+      });
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setRecalcAttention(recalculation);
+
       const [nextSummary, nextInsights] = await Promise.all([
         fetchTodaySummary(restaurantId),
         fetchInsights(restaurantId)
@@ -121,7 +136,7 @@ export default function AskMiseScreen() {
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) setLoading(false);
     }
-  }, [restaurant?.id, t]);
+  }, [restaurant?.id, restaurant?.timezone, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -326,6 +341,25 @@ export default function AskMiseScreen() {
             retryLabel={t("common.retry")}
             accessibilityLabel={t("ask.retry.accessibility")}
             onRetry={() => void load()}
+          />
+        ) : null}
+
+        {recalcAttention ? (
+          <StatusNotice
+            tone="warning"
+            title={t("home.recalculation.title")}
+            message={
+              recalcAttention.state === "unavailable"
+                ? t("home.recalculation.unavailable")
+                : t(
+                    recalcAttention.deadLetteredCount === 1
+                      ? "home.recalculation.body.one"
+                      : "home.recalculation.body.other",
+                    { count: formatNumber(recalcAttention.deadLetteredCount) }
+                  )
+            }
+            actionLabel={t("home.recalculation.action")}
+            onAction={() => router.push("/more/activity")}
           />
         ) : null}
 
