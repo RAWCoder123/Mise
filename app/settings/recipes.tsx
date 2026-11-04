@@ -24,6 +24,7 @@ import {
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
+import { normalizeRecipesPosMissingItemName } from "../../services/domain/presentationRecipesPosMissingItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -393,7 +394,21 @@ export default function RecipeBaselinesScreen() {
               </Text>
               <View style={styles.missingList}>
                 {visibleSummary.posItemsMissingRecipes.map((itemName) => (
-                  <Badge key={itemName} label={itemName} tone="warning" />
+                  // MISE-005XV: pin POS missing-recipe badge itemName to ASCII C.
+                  // Soft-null empty / Unicode-padded / control-bearing names to
+                  // recipes.warning.itemName.none without inventing clean menu
+                  // identity from NBSP/em-space trim. Leave React keys, builder
+                  // onPress write-back, active Unicode-trim equality, recipes.notice.linked
+                  // (#1081), recipeName / confirmed (#1080), ingredient.itemName
+                  // (#1067), and domain posItemsMissingRecipes computation alone.
+                  <Badge
+                    key={itemName}
+                    label={
+                      normalizeRecipesPosMissingItemName(itemName) ||
+                      t("recipes.warning.itemName.none")
+                    }
+                    tone="warning"
+                  />
                 ))}
               </View>
             </Card>
@@ -492,7 +507,13 @@ function RecipeBaselineBuilder({
             {missingMenuItems.slice(0, 5).map((itemName) => (
               <SuggestionChip
                 key={itemName}
-                label={itemName}
+                // MISE-005XV: same POS missing-recipe itemName presentation pin
+                // as the warning badges. Leave onPress raw write-back and the
+                // active Unicode-trim equality gate alone.
+                label={
+                  normalizeRecipesPosMissingItemName(itemName) ||
+                  t("recipes.warning.itemName.none")
+                }
                 active={menuItemName.trim().toLowerCase() === itemName.toLowerCase()}
                 disabled={saving}
                 onPress={() => onMenuItemNameChange(itemName)}
