@@ -1891,6 +1891,7 @@ const en = {
   "dailyPhaseBrief.boundary.title": "Still unknown",
   "dailyPhaseBrief.boundary.body": "Mise is not inferring {signals} until connected evidence is available.",
   "dailyPhaseBrief.action.report": "Open full daily report",
+  "dailyPhaseBrief.finding.interpretation.none": "Details",
 
   "dailyReport.title": "Daily report",
   "dailyReport.subtitle": "End-of-day operational closeout",
@@ -4189,6 +4190,7 @@ const es = {
   "dailyPhaseBrief.boundary.title": "Aún desconocido",
   "dailyPhaseBrief.boundary.body": "Mise no inferirá {signals} hasta que haya evidencia conectada.",
   "dailyPhaseBrief.action.report": "Abrir informe diario completo",
+  "dailyPhaseBrief.finding.interpretation.none": "Detalles",
 
   "dailyReport.title": "Informe diario",
   "dailyReport.subtitle": "Cierre operativo del día",
@@ -6483,6 +6485,7 @@ const zhHans = {
   "dailyPhaseBrief.boundary.title": "仍未知",
   "dailyPhaseBrief.boundary.body": "在获得已连接证据前，Mise 不会推断{signals}。",
   "dailyPhaseBrief.action.report": "打开完整每日报告",
+  "dailyPhaseBrief.finding.interpretation.none": "详情",
 
   "dailyReport.title": "每日报告",
   "dailyReport.subtitle": "日终运营收尾",
