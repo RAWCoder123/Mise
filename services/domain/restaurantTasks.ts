@@ -255,6 +255,118 @@ export function normalizeCreateRestaurantTaskInput(
   };
 }
 
+export const COUNT_SESSION_EVIDENCE_TYPE = "count_session";
+export const SUPPLIER_RECEIPT_EVIDENCE_TYPE = "supplier_receipt";
+export const COUNT_SESSION_EVIDENCE_STATUSES = ["submitted", "approved"] as const;
+export type CountSessionEvidenceStatus = (typeof COUNT_SESSION_EVIDENCE_STATUSES)[number];
+
+export function extractCountSessionEvidenceId(
+  evidence: readonly RestaurantTaskEvidence[]
+): string | null {
+  for (const entry of evidence) {
+    if (entry.type !== COUNT_SESSION_EVIDENCE_TYPE) continue;
+    const sessionId = optionalText(entry.countSessionId, 200, "Count session id");
+    if (sessionId) return sessionId;
+  }
+  return null;
+}
+
+export function extractSupplierReceiptEvidenceId(
+  evidence: readonly RestaurantTaskEvidence[]
+): string | null {
+  for (const entry of evidence) {
+    if (entry.type !== SUPPLIER_RECEIPT_EVIDENCE_TYPE) continue;
+    const orderId = optionalText(entry.supplierOrderId, 200, "Supplier order id");
+    if (orderId) return orderId;
+  }
+  return null;
+}
+
+/**
+ * Fail closed when count/receipt verification is only a free-text note.
+ * Hosted SQL re-checks that the referenced count session or received order exists.
+ */
+export function assertStructuredVerificationEvidence(
+  method: RestaurantTaskVerificationMethod,
+  evidence: readonly RestaurantTaskEvidence[],
+  context: { relatedOrderId?: string | null } = {}
+) {
+  if (method === "none" || method === "checklist") return;
+
+  if (method === "count") {
+    if (!extractCountSessionEvidenceId(evidence)) {
+      throw new Error(
+        "Count verification requires a submitted or approved inventory count session."
+      );
+    }
+    return;
+  }
+
+  if (method === "receipt") {
+    const orderId = extractSupplierReceiptEvidenceId(evidence);
+    if (!orderId) {
+      throw new Error("Receipt verification requires a completed supplier order receipt.");
+    }
+    const relatedOrderId = optionalText(context.relatedOrderId, 200, "Related order");
+    if (relatedOrderId && relatedOrderId !== orderId) {
+      throw new Error("Receipt verification must reference the related supplier order.");
+    }
+    return;
+  }
+
+  if (!evidence.some((entry) => entry.type === method)) {
+    throw new Error(`Verification evidence must include a ${method} entry.`);
+  }
+}
+
+export function buildCountSessionCompletionEvidence(input: {
+  countSessionId: string;
+  status: CountSessionEvidenceStatus;
+  note?: string | null;
+  checklist?: readonly RestaurantTaskEvidence[];
+}): RestaurantTaskEvidence[] {
+  const countSessionId = requiredText(input.countSessionId, 200, "Count session id");
+  if (!COUNT_SESSION_EVIDENCE_STATUSES.includes(input.status)) {
+    throw new Error("Count verification requires a submitted or approved inventory count session.");
+  }
+  const note = optionalText(input.note, 500, "Verification note");
+  return [
+    ...(input.checklist ?? []).map((entry) => ({
+      type: "checklist_item",
+      label: String(entry.label ?? entry.type ?? "Completed checklist item"),
+      completed: true
+    })),
+    {
+      type: COUNT_SESSION_EVIDENCE_TYPE,
+      countSessionId,
+      status: input.status,
+      ...(note ? { note } : {})
+    }
+  ];
+}
+
+export function buildSupplierReceiptCompletionEvidence(input: {
+  supplierOrderId: string;
+  note?: string | null;
+  checklist?: readonly RestaurantTaskEvidence[];
+}): RestaurantTaskEvidence[] {
+  const supplierOrderId = requiredText(input.supplierOrderId, 200, "Supplier order id");
+  const note = optionalText(input.note, 500, "Verification note");
+  return [
+    ...(input.checklist ?? []).map((entry) => ({
+      type: "checklist_item",
+      label: String(entry.label ?? entry.type ?? "Completed checklist item"),
+      completed: true
+    })),
+    {
+      type: SUPPLIER_RECEIPT_EVIDENCE_TYPE,
+      supplierOrderId,
+      status: "completed",
+      ...(note ? { note } : {})
+    }
+  ];
+}
+
 export function normalizeCompleteRestaurantTaskInput(input: CompleteRestaurantTaskInput) {
   return {
     restaurantId: requiredText(input.restaurantId, 200, "Restaurant id"),
