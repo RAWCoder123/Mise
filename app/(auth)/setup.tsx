@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { normalizeSetupRecipeIngredientItemName } from "../../services/domain/presentationSetupRecipeIngredientItemNameIdentity";
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -731,8 +732,22 @@ function RecipeDraftEditor({
             placeholderTextColor={colors.faint}
           />
           <TextInput
+            // MISE-005XZ: pin Setup recipe quantity/unit a11y ingredient.itemName
+            // to ASCII C. Soft-null / Unicode-padded ingredient names fall
+            // through to setup.fallback.ingredient without inventing a clean
+            // a11y ingredient token from NBSP/em-space padding, and without
+            // letting truthy Unicode-only space bypass that intentional
+            // localized fallback. Leave TextInput value={ingredient.itemName},
+            // recipe.dishName a11y (#setup.fallback.recipe), Recipes
+            // ingredient.itemName (#1067), Recipes builder inventory
+            // SuggestionChip item.item_name (#1083), Inventory hub
+            // item.item_name (#1056), setup draft validation
+            // ingredient.itemName.trim() emptiness gates, and open #901 /
+            // MISE-005RO validate/normalize itemName prep alone.
             accessibilityLabel={t("setup.field.quantityAccessibility", {
-              ingredient: ingredient.itemName || t("setup.fallback.ingredient")
+              ingredient:
+                normalizeSetupRecipeIngredientItemName(ingredient.itemName) ||
+                t("setup.fallback.ingredient")
             })}
             value={ingredient.quantity}
             onChangeText={(quantity) => updateIngredient(ingredient.id, { quantity })}
@@ -743,7 +758,9 @@ function RecipeDraftEditor({
           />
           <TextInput
             accessibilityLabel={t("setup.field.unitAccessibility", {
-              ingredient: ingredient.itemName || t("setup.fallback.ingredient")
+              ingredient:
+                normalizeSetupRecipeIngredientItemName(ingredient.itemName) ||
+                t("setup.fallback.ingredient")
             })}
             value={ingredient.unit}
             onChangeText={(unit) => updateIngredient(ingredient.id, { unit })}
