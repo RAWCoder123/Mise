@@ -142,6 +142,122 @@ export function purchaseAuthorityBlockerMessageKey(code: PurchaseAuthorityBlocke
   return `orders.authority.${code}` as const;
 }
 
+export type PurchaseAuthorityRecoveryHref =
+  | "/inventory/count"
+  | `/inventory/${string}`
+  | "/settings/pos"
+  | "/settings/pos-mappings"
+  | "/settings/recipes"
+  | "/settings/suppliers"
+  | "/orders";
+
+export type PurchaseAuthorityRecoveryLabelKey =
+  | "orders.authority.recovery.count"
+  | "orders.authority.recovery.inventoryItem"
+  | "orders.authority.recovery.pos"
+  | "orders.authority.recovery.posMappings"
+  | "orders.authority.recovery.recipes"
+  | "orders.authority.recovery.suppliers"
+  | "orders.authority.recovery.orders";
+
+export interface PurchaseAuthorityBlockerRecovery {
+  href: PurchaseAuthorityRecoveryHref;
+  labelKey: PurchaseAuthorityRecoveryLabelKey;
+}
+
+/**
+ * ASCII-only end trim for inventory evidence IDs used in recovery deep links.
+ * Unicode `String#trim` would strip NBSP / em-space padding and invent equality
+ * with a clean inventory ID.
+ */
+export function asciiTrimPurchaseAuthorityInventoryId(value: string) {
+  return value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, "");
+}
+
+/**
+ * Canonicalize an inventory item ID under ASCII C for recovery deep links.
+ * Soft-null when empty, still Unicode-padded, or containing ASCII controls —
+ * never invent a clean inventory deep-link via Unicode trim.
+ */
+export function canonicalizePurchaseAuthorityInventoryId(value: string): string | null {
+  const trimmed = asciiTrimPurchaseAuthorityInventoryId(value);
+  if (!trimmed) return null;
+  if (trimmed !== trimmed.trim()) return null;
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+  return trimmed;
+}
+
+/**
+ * Maps a fail-closed purchase-authority blocker to an existing operator
+ * recovery surface. Returns null when the blocker is informational only
+ * (wait, dismiss, or founder/ops control) or evidence is insufficient to
+ * deep-link safely.
+ */
+export function resolvePurchaseAuthorityBlockerRecovery(
+  code: PurchaseAuthorityBlockerCode,
+  evidence: Pick<PurchaseAuthorityEvidence, "inventoryItemId">
+): PurchaseAuthorityBlockerRecovery | null {
+  const inventoryItemId = canonicalizePurchaseAuthorityInventoryId(evidence.inventoryItemId);
+  const inventoryHref = inventoryItemId
+    ? (`/inventory/${encodeURIComponent(inventoryItemId)}` as const)
+    : null;
+
+  switch (code) {
+    case "inventory_count_missing":
+    case "inventory_count_stale":
+    case "inventory_count_future":
+    case "inventory_projection_untrusted":
+    case "inventory_evidence_incomplete":
+      return { href: "/inventory/count", labelKey: "orders.authority.recovery.count" };
+
+    case "canonical_unit_unverified":
+      return inventoryHref
+        ? { href: inventoryHref, labelKey: "orders.authority.recovery.inventoryItem" }
+        : null;
+
+    case "planning_window_incomplete":
+    case "pos_not_connected":
+    case "pos_sync_in_progress":
+    case "pos_sync_stale":
+    case "provider_identity_incomplete":
+    case "demand_history_insufficient":
+      return { href: "/settings/pos", labelKey: "orders.authority.recovery.pos" };
+
+    case "provider_mapping_missing":
+    case "provider_mapping_ambiguous":
+      return { href: "/settings/pos-mappings", labelKey: "orders.authority.recovery.posMappings" };
+
+    case "recipe_missing":
+    case "recipe_incomplete":
+    case "recipe_unit_incompatible":
+    case "recipe_inventory_reference_missing":
+      return { href: "/settings/recipes", labelKey: "orders.authority.recovery.recipes" };
+
+    case "supplier_missing":
+    case "supplier_mismatch":
+      return inventoryHref
+        ? { href: inventoryHref, labelKey: "orders.authority.recovery.inventoryItem" }
+        : { href: "/settings/suppliers", labelKey: "orders.authority.recovery.suppliers" };
+
+    case "draft_authority_incomplete":
+    case "draft_authority_stale":
+    case "delivery_requires_review":
+      return { href: "/orders", labelKey: "orders.authority.recovery.orders" };
+
+    case "planning_revision_stale":
+    case "send_in_progress":
+    case "ordering_disabled":
+    case "recommendation_no_longer_actionable":
+      return null;
+
+    default: {
+      const _exhaustive: never = code;
+      void _exhaustive;
+      return null;
+    }
+  }
+}
+
 function boundedString(value: unknown, maximum: number) {
   return typeof value === "string" ? value.trim().slice(0, maximum) : "";
 }

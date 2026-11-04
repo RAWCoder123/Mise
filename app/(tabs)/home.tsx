@@ -29,6 +29,12 @@ import type {
 } from "../../services/domain/operatingBrief";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
+  isPurchaseAuthorityBlockedError,
+  purchaseAuthorityBlockerMessageKey,
+  resolvePurchaseAuthorityBlockerRecovery,
+  type PurchaseAuthorityResult
+} from "../../services/domain/purchaseAuthority";
+import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
   type OperationalTodayTaskTiming
@@ -72,6 +78,9 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvalNotice, setApprovalNotice] = useState<string | null>(null);
+  const [approvalAuthorities, setApprovalAuthorities] = useState<
+    Record<string, PurchaseAuthorityResult>
+  >({});
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [recalcAttention, setRecalcAttention] =
     useState<RecalculationAttentionSummary | null>(null);
@@ -88,6 +97,7 @@ export default function HomeScreen() {
     setError(null);
     setApprovingId(null);
     setApprovalNotice(null);
+    setApprovalAuthorities({});
     setRecalcAttention(null);
     lastSeenSessionRef.current = null;
     setLoading(Boolean(restaurant));
@@ -265,6 +275,7 @@ export default function HomeScreen() {
           <ApprovalsSection
             brief={visibleBrief}
             approvingId={approvingId}
+            approvalAuthorities={approvalAuthorities}
             t={t}
             onApprove={async (card) => {
               if (!restaurant || approvingId) return;
@@ -278,6 +289,12 @@ export default function HomeScreen() {
               }
               setApprovingId(card.id);
               setApprovalNotice(null);
+              setApprovalAuthorities((current) => {
+                if (!(card.id in current)) return current;
+                const next = { ...current };
+                delete next[card.id];
+                return next;
+              });
               try {
                 await approveOperatingDecision(restaurant.id, {
                   recommendationId: card.recommendationId,
@@ -293,7 +310,19 @@ export default function HomeScreen() {
                   operation: "approve",
                   restaurant_id: restaurant.id
                 });
-                if (activeRestaurantIdRef.current === restaurant.id) {
+                if (activeRestaurantIdRef.current !== restaurant.id) return;
+                if (isPurchaseAuthorityBlockedError(approveError)) {
+                  setApprovalAuthorities((current) => ({
+                    ...current,
+                    [card.id]: approveError.authority
+                  }));
+                  const firstBlocker = approveError.authority.blockers[0];
+                  setApprovalNotice(
+                    firstBlocker
+                      ? t(purchaseAuthorityBlockerMessageKey(firstBlocker.code) as MessageKey)
+                      : t("home.approvals.approveError")
+                  );
+                } else {
                   setApprovalNotice(t("home.approvals.approveError"));
                 }
               } finally {
@@ -360,11 +389,13 @@ function RestaurantStatusCard({
 function ApprovalsSection({
   brief,
   approvingId,
+  approvalAuthorities,
   t,
   onApprove
 }: {
   brief: OperatingBrief;
   approvingId: string | null;
+  approvalAuthorities: Record<string, PurchaseAuthorityResult>;
   t: Translator;
   onApprove: (card: OperatingBriefApprovalCard) => void | Promise<void>;
 }) {
@@ -381,11 +412,49 @@ function ApprovalsSection({
       ) : (
         cards.map((card) => {
           const canOneTap = Boolean(card.recommendationId);
+          const authority = approvalAuthorities[card.id];
+          const authorityBlockers = authority?.blockers ?? [];
+          const approvalBlocked = authority?.ready === false;
           return (
             <View key={card.id} style={styles.briefCard}>
               <Text style={styles.cardTitle}>{card.title}</Text>
               <Text style={styles.cardBody}>{card.recommendedAction}</Text>
               <Text style={styles.metaLine}>{t("home.approvals.why")}: {card.whyItMatters}</Text>
+              {approvalBlocked ? (
+                <View style={styles.blockerPanel} accessibilityLiveRegion="polite">
+                  <Text style={styles.blockerTitle}>{t("orders.authority.title")}</Text>
+                  {authorityBlockers.slice(0, 3).map((blocker) => {
+                    const recovery = authority
+                      ? resolvePurchaseAuthorityBlockerRecovery(blocker.code, authority.evidence)
+                      : null;
+                    return (
+                      <View key={blocker.code} style={styles.blockerRow}>
+                        <Text style={styles.blockerText}>
+                          {t(purchaseAuthorityBlockerMessageKey(blocker.code) as MessageKey)}
+                        </Text>
+                        {recovery ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={t(recovery.labelKey)}
+                            onPress={() => router.push(recovery.href as never)}
+                            style={({ pressed }) => [
+                              styles.blockerRecovery,
+                              pressed && styles.pressed
+                            ]}
+                          >
+                            <Text style={styles.blockerRecoveryText}>{t(recovery.labelKey)}</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                  {authorityBlockers.length > 3 ? (
+                    <Text style={styles.blockerText}>
+                      {t("orders.authority.more", { count: authorityBlockers.length - 3 })}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
               <View style={styles.approvalActions}>
                 <Button
                   title={
@@ -396,7 +465,7 @@ function ApprovalsSection({
                         : t("home.approvals.review")
                   }
                   onPress={() => void onApprove(card)}
-                  disabled={Boolean(approvingId)}
+                  disabled={Boolean(approvingId) || (canOneTap && approvalBlocked)}
                   style={styles.approvalButton}
                 />
               </View>
@@ -914,6 +983,39 @@ const styles = StyleSheet.create({
   },
   approvalButton: {
     alignSelf: "flex-start"
+  },
+  blockerPanel: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.caution,
+    backgroundColor: colors.cautionSoft,
+    borderRadius: radii.md,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 3
+  },
+  blockerTitle: {
+    color: colors.text,
+    ...conceptTypography.caption,
+    fontFamily: fontFamilies.semibold
+  },
+  blockerRow: {
+    gap: 2
+  },
+  blockerText: {
+    color: colors.muted,
+    ...conceptTypography.caption
+  },
+  blockerRecovery: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingVertical: 4
+  },
+  blockerRecoveryText: {
+    color: colors.text,
+    ...conceptTypography.caption,
+    fontFamily: fontFamilies.semibold,
+    textDecorationLine: "underline"
   },
   briefingSection: {
     gap: 0
