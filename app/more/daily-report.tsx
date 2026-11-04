@@ -26,14 +26,16 @@ import { Card } from "../../components/ui/Card";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Screen } from "../../components/ui/Screen";
 import { SectionHeader } from "../../components/ui/SectionHeader";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { runScheduledRecalculations } from "../../services/application/scheduledRecalculations";
 import {
   fetchDailyOpsReport,
   type DailyOpsReport
 } from "../../services/miseService";
+import type { RecalculationAttentionSummary } from "../../services/presentation/recalculationPresentation";
 import { captureMiseError } from "../../services/telemetry";
 import type {
   SupplierReliabilityReason,
@@ -60,6 +62,8 @@ export default function DailyReportScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [recalcAttention, setRecalcAttention] =
+    useState<RecalculationAttentionSummary | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -69,6 +73,7 @@ export default function DailyReportScreen() {
     setReport(null);
     setLoadedRestaurantId(null);
     setError(false);
+    setRecalcAttention(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
@@ -82,6 +87,16 @@ export default function DailyReportScreen() {
     setLoading(true);
     setError(false);
     try {
+      // Dispatch any due recalculation cycles before composing the daily ops
+      // report, so Daily Report reads post-recalculation today / insights state
+      // rather than racing Home-only dispatch when operators skip hubs.
+      const recalculation = await runScheduledRecalculations({
+        restaurantId,
+        restaurantTimeZone: restaurant.timezone
+      });
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setRecalcAttention(recalculation);
+
       const nextReport = await fetchDailyOpsReport(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setReport(nextReport);
@@ -99,7 +114,7 @@ export default function DailyReportScreen() {
         setLoading(false);
       }
     }
-  }, [restaurant?.id]);
+  }, [restaurant?.id, restaurant?.timezone]);
 
   useFocusEffect(
     useCallback(() => {
@@ -137,6 +152,25 @@ export default function DailyReportScreen() {
             retryLabel={t("common.retry")}
             accessibilityLabel={t("dailyReport.retry.accessibility")}
             onRetry={() => void load()}
+          />
+        ) : null}
+
+        {recalcAttention ? (
+          <StatusNotice
+            tone="warning"
+            title={t("home.recalculation.title")}
+            message={
+              recalcAttention.state === "unavailable"
+                ? t("home.recalculation.unavailable")
+                : t(
+                    recalcAttention.deadLetteredCount === 1
+                      ? "home.recalculation.body.one"
+                      : "home.recalculation.body.other",
+                    { count: formatNumber(recalcAttention.deadLetteredCount) }
+                  )
+            }
+            actionLabel={t("home.recalculation.action")}
+            onAction={() => router.push("/more/activity")}
           />
         ) : null}
 
