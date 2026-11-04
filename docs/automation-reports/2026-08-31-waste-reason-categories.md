@@ -1,7 +1,9 @@
 # Structured waste reason categories (2026-08-31)
 
-Branch: `cursor/mise-waste-reason-categories`
-Base: `origin/main` @ `20b28e5`
+Branch: `cursor/mise-waste-reason-categories-main-rebase`
+(Original tip: `cursor/mise-waste-reason-categories` / #301)
+Base: `origin/main` @ `78da7376` (MISE-005A)
+Cherry-pick: `ce7ad1ce` → clean onto main (2026-11-04)
 
 ## Closed
 
