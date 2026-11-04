@@ -24,10 +24,11 @@ import {
   SegmentedControl,
   type SegmentOption
 } from "../../components/ui/SegmentedControl";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, density, fontFamilies, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { runScheduledRecalculations } from "../../services/application/scheduledRecalculations";
 import {
   fetchDailyPhaseBriefs,
   type DailyPhaseBriefs
@@ -37,6 +38,7 @@ import type {
   DailyPhaseFinding,
   DailyPhaseFindingTone
 } from "../../services/domain/dailyPhaseBrief";
+import type { RecalculationAttentionSummary } from "../../services/presentation/recalculationPresentation";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -56,6 +58,8 @@ export default function DailyPhaseBriefScreen() {
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [recalcAttention, setRecalcAttention] =
+    useState<RecalculationAttentionSummary | null>(null);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -66,6 +70,7 @@ export default function DailyPhaseBriefScreen() {
     setSelectedPhase(null);
     setLoadedRestaurantId(null);
     setError(false);
+    setRecalcAttention(null);
     setLoading(Boolean(restaurant));
   }, [restaurant?.id]);
 
@@ -79,6 +84,16 @@ export default function DailyPhaseBriefScreen() {
     setLoading(true);
     setError(false);
     try {
+      // Dispatch any due recalculation cycles before composing the phase brief,
+      // so Daily Brief reads post-recalculation operating plan / brief / report
+      // state rather than racing Home-only dispatch when operators skip hubs.
+      const recalculation = await runScheduledRecalculations({
+        restaurantId,
+        restaurantTimeZone: restaurant.timezone
+      });
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setRecalcAttention(recalculation);
+
       const next = await fetchDailyPhaseBriefs(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setBriefs(next);
@@ -97,7 +112,7 @@ export default function DailyPhaseBriefScreen() {
         setLoading(false);
       }
     }
-  }, [restaurant?.id]);
+  }, [restaurant?.id, restaurant?.timezone]);
 
   useFocusEffect(
     useCallback(() => {
@@ -148,6 +163,25 @@ export default function DailyPhaseBriefScreen() {
             retryLabel={t("common.retry")}
             accessibilityLabel={t("dailyPhaseBrief.retry.accessibility")}
             onRetry={() => void load()}
+          />
+        ) : null}
+
+        {recalcAttention ? (
+          <StatusNotice
+            tone="warning"
+            title={t("home.recalculation.title")}
+            message={
+              recalcAttention.state === "unavailable"
+                ? t("home.recalculation.unavailable")
+                : t(
+                    recalcAttention.deadLetteredCount === 1
+                      ? "home.recalculation.body.one"
+                      : "home.recalculation.body.other",
+                    { count: formatNumber(recalcAttention.deadLetteredCount) }
+                  )
+            }
+            actionLabel={t("home.recalculation.action")}
+            onAction={() => router.push("/more/activity")}
           />
         ) : null}
 
