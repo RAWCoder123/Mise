@@ -24,6 +24,7 @@ import {
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
+import { normalizeRecipesBuilderInventoryItemName } from "../../services/domain/presentationRecipesBuilderInventoryItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -522,7 +523,20 @@ function RecipeBaselineBuilder({
           {inventoryItems.slice(0, 7).map((item) => (
             <SuggestionChip
               key={item.id}
-              label={item.item_name}
+              // MISE-005XW: pin Recipes builder inventory SuggestionChip
+              // item.item_name to ASCII C. Soft-null empty / Unicode-padded /
+              // control-bearing names to recipes.builder.inventoryItemName.none
+              // without inventing clean inventory identity from NBSP/em-space
+              // trim. Leave React keys (item.id), onPress raw write-back,
+              // selectedInventoryItem Unicode-trim equality, POS missing-recipe
+              // badge itemName (#1082), recipes.notice.linked (#1081),
+              // recipeName / confirmed (#1080), ingredient.itemName (#1067),
+              // Inventory hub item.item_name (#1056), and recipe-baseline
+              // inventory itemName (#1035) alone.
+              label={
+                normalizeRecipesBuilderInventoryItemName(item.item_name) ||
+                t("recipes.builder.inventoryItemName.none")
+              }
               active={selectedInventoryItem?.id === item.id}
               disabled={saving}
               icon={<Package size={icon.inline} color={selectedInventoryItem?.id === item.id ? colors.surface : colors.text} strokeWidth={iconStroke} />}
