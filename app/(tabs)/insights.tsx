@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronUp, Lightbulb, RefreshCw } from "lucide-react-native";
 
 import { DailyBriefBoard } from "../../components/dailyBrief/DailyBriefBoard";
@@ -10,12 +10,13 @@ import { MotionView, StateChangeView } from "../../components/ui/Motion";
 import { Screen } from "../../components/ui/Screen";
 import { SectionSurface } from "../../components/ui/SectionSurface";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
-import { RetryNotice } from "../../components/ui/StatusNotice";
+import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { TrendLineChart } from "../../components/ui/TrendLineChart";
 import { colors, conceptTypography, fontFamilies, icon, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import { runScheduledRecalculations } from "../../services/application/scheduledRecalculations";
 import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDecisionOutbox";
 import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
@@ -41,6 +42,7 @@ import {
   presentLearningMemory,
   presentLearningMemorySignal
 } from "../../services/presentation/operationsPresentation";
+import type { RecalculationAttentionSummary } from "../../services/presentation/recalculationPresentation";
 import { buildConciseTrendDateLabels } from "../../services/presentation/salesTrendLabels";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import type { InsightsSalesTrendPoint } from "../../services/miseService";
@@ -73,6 +75,8 @@ export default function InsightsScreen() {
   const [briefMessageIsError, setBriefMessageIsError] = useState(false);
   const [busyFindingId, setBusyFindingId] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [recalcAttention, setRecalcAttention] =
+    useState<RecalculationAttentionSummary | null>(null);
   const hasLoaded = useRef(false);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
@@ -94,6 +98,7 @@ export default function InsightsScreen() {
     setBriefMessage(null);
     setBriefMessageIsError(false);
     setBusyFindingId(null);
+    setRecalcAttention(null);
     setLoading(Boolean(restaurant));
     setRefreshing(false);
   }, [restaurant?.id]);
@@ -109,6 +114,15 @@ export default function InsightsScreen() {
     if (!hasLoaded.current) setLoading(true);
     setError(false);
     try {
+      // Dispatch any due recalculation cycles before reading findings/briefs, so
+      // Insights renders post-recalculation state rather than racing Home-only dispatch.
+      const recalculation = await runScheduledRecalculations({
+        restaurantId,
+        restaurantTimeZone: restaurant.timezone
+      });
+      if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setRecalcAttention(recalculation);
+
       await flushQueuedOperationalFindingDecisions(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
 
@@ -138,7 +152,7 @@ export default function InsightsScreen() {
         setLoading(false);
       }
     }
-  }, [restaurant?.id]);
+  }, [restaurant?.id, restaurant?.timezone]);
 
   useFocusEffect(
     useCallback(() => {
@@ -338,6 +352,25 @@ export default function InsightsScreen() {
             onRetry={() => void load()}
             retryLabel={t("common.retry")}
             accessibilityLabel={t("insights.retry.accessibility")}
+          />
+        ) : null}
+
+        {recalcAttention ? (
+          <StatusNotice
+            tone="warning"
+            title={t("home.recalculation.title")}
+            message={
+              recalcAttention.state === "unavailable"
+                ? t("home.recalculation.unavailable")
+                : t(
+                    recalcAttention.deadLetteredCount === 1
+                      ? "home.recalculation.body.one"
+                      : "home.recalculation.body.other",
+                    { count: formatNumber(recalcAttention.deadLetteredCount) }
+                  )
+            }
+            actionLabel={t("home.recalculation.action")}
+            onAction={() => router.push("/more/activity")}
           />
         ) : null}
 
