@@ -8,6 +8,7 @@ import { colors, conceptTypography, density, iconStroke, radii } from "../../con
 import { useLocale } from "../../contexts/LocaleContext";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { OperatingPlanBucket, OperatingPlanItem } from "../../services/domain/operatingPlan";
+import { normalizeOperatingPlanTaskDetail } from "../../services/domain/presentationOperatingPlanTaskDetailIdentity";
 import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
@@ -175,7 +176,11 @@ function OperatingPlanItemRow({
           accessibilityRole="button"
           accessibilityLabel={t("today.task.accessibility", {
             title: presentation.title,
-            detail: presentation.detail,
+            // MISE-005XR: soft-null blank / Unicode-padded / control-bearing
+            // task details before timeline-row a11y interpolation.
+            detail:
+              normalizeOperatingPlanTaskDetail(presentation.detail) ||
+              t("today.task.detail.none"),
             action: actionLabel
           })}
           onPress={() => router.push(`/tasks/${item.id}`)}
