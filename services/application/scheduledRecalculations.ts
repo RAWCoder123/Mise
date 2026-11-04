@@ -14,7 +14,8 @@ const repository = getMiseRepository();
  * reports back only what an operator needs to see.
  *
  * Mise has no scheduler and no machine-actor auth path yet, so this is called
- * from an authenticated operator session. A restaurant nobody opens receives no
+ * from authenticated operator sessions on Home, Today, Insights, Ask Mise,
+ * Daily Brief, and Daily Report. A restaurant nobody opens receives no
  * recalculation until someone does; that limitation is recorded in the ledger
  * migration header rather than papered over here.
  *
