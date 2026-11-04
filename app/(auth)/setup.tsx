@@ -35,6 +35,7 @@ import {
   DEMO_SETUP_POS_SALES_PLACEHOLDER,
   isDemoDatasetRestaurantName
 } from "../../services/demoData";
+import { normalizeSetupRecipeDishName } from "../../services/domain/presentationSetupRecipeDishNameIdentity";
 import { saveRestaurantSetup, updateRestaurantProfile } from "../../services/miseService";
 import { canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { trackMiseEvent } from "../../services/telemetry";
@@ -714,7 +715,15 @@ function RecipeDraftEditor({
           placeholderTextColor={colors.faint}
         />
         <IconPress
-          label={t("setup.remove.recipe", { recipe: recipe.dishName || t("setup.fallback.recipe") })}
+          // MISE-005YA: pin Setup recipe remove/a11y dishName through soft-null
+          // so Unicode-only-space / Unicode-padded names fall through to
+          // setup.fallback.recipe without inventing a clean recipe a11y token.
+          // Leave TextInput value={recipe.dishName}, quantity/unit ingredient
+          // a11y (#1086), and open #862/#900 validate/normalize paths alone.
+          label={t("setup.remove.recipe", {
+            recipe:
+              normalizeSetupRecipeDishName(recipe.dishName) || t("setup.fallback.recipe")
+          })}
           onPress={onRemove}
         />
       </View>
@@ -722,7 +731,8 @@ function RecipeDraftEditor({
         <View key={ingredient.id} style={styles.ingredientRow}>
           <TextInput
             accessibilityLabel={t("setup.field.recipeIngredientAccessibility", {
-              recipe: recipe.dishName || t("setup.fallback.recipe")
+              recipe:
+                normalizeSetupRecipeDishName(recipe.dishName) || t("setup.fallback.recipe")
             })}
             value={ingredient.itemName}
             onChangeText={(itemName) => updateIngredient(ingredient.id, { itemName })}
@@ -755,7 +765,8 @@ function RecipeDraftEditor({
       ))}
       <Pressable
         accessibilityLabel={t("setup.addIngredientAccessibility", {
-          recipe: recipe.dishName || t("setup.fallback.recipe")
+          recipe:
+            normalizeSetupRecipeDishName(recipe.dishName) || t("setup.fallback.recipe")
         })}
         onPress={() => onChange({ ingredients: [...recipe.ingredients, createRecipeIngredientDraft()] })}
         style={styles.inlineAdd}
