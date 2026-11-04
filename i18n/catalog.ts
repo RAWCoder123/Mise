@@ -1606,6 +1606,7 @@ const en = {
   "today.floorNotes.subtitle": "{count} open on this device",
   "today.floorNotes.markDone": "Mark done",
   "today.floorNotes.rowAccessibility": "Task: {title}",
+  "today.floorNotes.rowTitle.none": "Task",
   "today.floorNotes.completeError": "Task could not be marked done.",
 
   "tasks.title": "Task detail",
@@ -3904,6 +3905,7 @@ const es = {
   "today.floorNotes.subtitle": "{count} abiertas en este dispositivo",
   "today.floorNotes.markDone": "Marcar hecha",
   "today.floorNotes.rowAccessibility": "Tarea: {title}",
+  "today.floorNotes.rowTitle.none": "Tarea",
   "today.floorNotes.completeError": "No se pudo marcar la tarea como hecha.",
 
   "tasks.title": "Detalle de la tarea",
@@ -6198,6 +6200,7 @@ const zhHans = {
   "today.floorNotes.subtitle": "此设备上有 {count} 条未完成",
   "today.floorNotes.markDone": "标为完成",
   "today.floorNotes.rowAccessibility": "任务：{title}",
+  "today.floorNotes.rowTitle.none": "任务",
   "today.floorNotes.completeError": "任务无法标为完成。",
 
   "tasks.title": "任务详情",
