@@ -24,6 +24,8 @@ import {
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
+import { normalizeRecipesNoticeLinkedDishName } from "../../services/domain/presentationRecipesNoticeLinkedDishIdentity";
+import { normalizeRecipesNoticeLinkedIngredientName } from "../../services/domain/presentationRecipesNoticeLinkedIngredientIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -257,7 +259,31 @@ export default function RecipeBaselinesScreen() {
         unit: selectedInventoryItem.unit
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setNotice(t("recipes.notice.linked", { ingredient: selectedInventoryItem.item_name, dish: menuItemName }));
+      // MISE-005XU: soft-null blank / Unicode-padded / control-bearing ingredient
+      // and dish draft tokens before recipes.notice.linked interpolation.
+      // Ingredient soft-nulls from raw selectedInventoryItem.item_name; dish
+      // soft-nulls from raw newMenuItemName (not the already Unicode-trimmed
+      // menuItemName API gate) so NBSP/em-space padding cannot invent clean
+      // notice identity. Soft-null falls through to
+      // recipes.notice.linked.ingredient.none / recipes.notice.linked.dish.none.
+      // Leave Recipes ingredient.itemName row chrome (#1067), recipeName /
+      // recipes.notice.confirmed dish (#1080), setup dish names (#862),
+      // inventory recipe-mapping menuItemName (#863), demo baseline (#905),
+      // recipe-authority hydrate (#935), recipe-baseline inventory itemName
+      // (#1035), POS missing-recipe badges, React list keys, and the
+      // addRecipeBaselineIngredient write path alone.
+      const linkedIngredientName =
+        normalizeRecipesNoticeLinkedIngredientName(selectedInventoryItem.item_name) ||
+        t("recipes.notice.linked.ingredient.none");
+      const linkedDishName =
+        normalizeRecipesNoticeLinkedDishName(newMenuItemName) ||
+        t("recipes.notice.linked.dish.none");
+      setNotice(
+        t("recipes.notice.linked", {
+          ingredient: linkedIngredientName,
+          dish: linkedDishName
+        })
+      );
       setNewInventoryItemName("");
       setNewQuantity("1");
       await load();
