@@ -100,6 +100,32 @@ test("repeated item waste becomes an attention signal with verified cost", () =>
   assert.equal(summary.topItems[0]?.distinctDayCount, 2);
   assert.equal(summary.recommendedAction, "review_repeat_item");
   assert.equal(summary.recentEvents[0]?.note, "Trim loss after prep");
+  assert.equal(summary.recentEvents[0]?.reasonCode, null);
+  assert.deepEqual(
+    summary.topReasons.map((entry) => entry.reasonCode),
+    [null]
+  );
+});
+
+test("dominant spoilage or expired reasons elevate waste attention", () => {
+  const summary = analyze([
+    event("waste-1", "tomatoes", 1000, "2026-08-03T14:00:00.000Z", {
+      reasonCode: "spoilage"
+    }),
+    event("waste-2", "tomatoes", 500, "2026-08-03T15:00:00.000Z", {
+      reasonCode: "expired"
+    }),
+    event("waste-3", "tomatoes", 250, "2026-08-03T18:00:00.000Z", {
+      reasonCode: "prep_trim"
+    })
+  ]);
+
+  assert.equal(summary.status, "attention");
+  assert.ok(summary.reasons.includes("dominant_spoilage"));
+  assert.ok(!summary.reasons.includes("repeat_item"));
+  assert.equal(summary.recommendedAction, "review_spoilage");
+  assert.equal(summary.topReasons[0]?.reasonCode, "spoilage");
+  assert.equal(summary.recentEvents[0]?.reasonCode, "prep_trim");
 });
 
 test("a material verified cost increase is compared with the prior window", () => {

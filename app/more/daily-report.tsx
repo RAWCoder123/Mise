@@ -628,6 +628,7 @@ function dailyWasteActionCopy(
   const keys: Record<WasteAnalysisAction, MessageKey> = {
     start_logging: "waste.actionCopy.start_logging",
     review_repeat_item: "waste.actionCopy.review_repeat_item",
+    review_spoilage: "waste.actionCopy.review_spoilage",
     complete_cost_setup: "waste.actionCopy.complete_cost_setup",
     keep_logging: "waste.actionCopy.keep_logging"
   };
