@@ -37,6 +37,7 @@ import type {
   DailyPhaseFinding,
   DailyPhaseFindingTone
 } from "../../services/domain/dailyPhaseBrief";
+import { normalizeDailyPhaseBriefFindingTitle } from "../../services/domain/presentationDailyPhaseBriefFindingTitleIdentity";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -245,10 +246,16 @@ function FindingRow({
   index: number;
   onPress?: () => void;
 }) {
+  const { t } = useLocale();
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={`${finding.title}. ${finding.interpretation}`}
+      accessibilityLabel={`${
+        // MISE-005XP: soft-null blank / Unicode-padded / control-bearing
+        // finding titles before finding-row a11y interpolation.
+        normalizeDailyPhaseBriefFindingTitle(finding.title) ||
+        t("dailyPhaseBrief.finding.title.none")
+      }. ${finding.interpretation}`}
       disabled={!onPress}
       onPress={onPress}
       style={({ pressed }) => [styles.findingRow, pressed && styles.pressed]}
