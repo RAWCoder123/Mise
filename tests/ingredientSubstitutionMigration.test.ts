@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const migration = readFileSync(
-  "supabase/migrations/20260901230000_ingredient_substitution_manager_authority.sql",
+  "supabase/migrations/20261104233000_ingredient_substitution_manager_authority.sql",
   "utf8"
 );
 const pgTap = readFileSync(

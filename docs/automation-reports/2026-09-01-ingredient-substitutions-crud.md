@@ -9,7 +9,7 @@ Base: `origin/main` @ `20b28e5`
 
 ## Solution
 
-- Additive migration `20260901230000_ingredient_substitution_manager_authority.sql` with manager+ SECURITY DEFINER RPCs:
+- Additive migration `20261104233000_ingredient_substitution_manager_authority.sql` with manager+ SECURITY DEFINER RPCs:
   - `upsert_ingredient_substitution` (draft create/edit)
   - `verify_ingredient_substitution`
   - `reject_ingredient_substitution`
