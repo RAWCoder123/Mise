@@ -1228,7 +1228,8 @@ export function normalizeSupplierDeliveryItemRecord(
     received_quantity: asNonNegativeNumber(value.received_quantity),
     damaged_quantity: asNonNegativeNumber(value.damaged_quantity),
     missing_quantity: asNonNegativeNumber(value.missing_quantity),
-    discrepancy_reason: asNullableString(value.discrepancy_reason)
+    discrepancy_reason: asNullableString(value.discrepancy_reason),
+    substitution_item_id: asNullableString(value.substitution_item_id)
   };
 }
 

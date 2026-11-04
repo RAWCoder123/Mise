@@ -3838,7 +3838,8 @@ export function createLocalDemoRepository(): MiseRepository {
           (line) =>
             (line.damagedQuantity ?? 0) > 0 ||
             (line.missingQuantity ?? 0) > 0 ||
-            Boolean(line.discrepancyReason)
+            Boolean(line.discrepancyReason) ||
+            Boolean(line.substitutionInventoryItemId?.trim())
         );
         const status = hasDiscrepancy ? "discrepancy" : "received";
         if (status === "received") order.status = "completed";
@@ -3905,7 +3906,8 @@ export function createLocalDemoRepository(): MiseRepository {
             received_quantity: line.receivedQuantity,
             damaged_quantity: line.damagedQuantity ?? 0,
             missing_quantity: line.missingQuantity ?? 0,
-            canonical_unit: line.canonicalUnit
+            canonical_unit: line.canonicalUnit,
+            substitution_item_id: line.substitutionInventoryItemId?.trim() || null
           }))
         ];
 
@@ -4055,10 +4057,19 @@ export function createLocalDemoRepository(): MiseRepository {
         }
 
         for (const line of input.lines) {
+          const receiptItemId =
+            line.substitutionInventoryItemId?.trim() || line.inventoryItemId;
           const item = state.inventoryItems.find(
-            (entry) => entry.restaurant_id === restaurantId && entry.id === line.inventoryItemId
+            (entry) => entry.restaurant_id === restaurantId && entry.id === receiptItemId
           );
           if (!item) continue;
+          if (
+            line.substitutionInventoryItemId?.trim() &&
+            (item.canonical_unit_verification_status !== "verified" ||
+              item.canonical_unit !== line.canonicalUnit)
+          ) {
+            throw new Error("Delivery substitution is not verified");
+          }
           const receivedNet = Math.max(0, line.receivedQuantity - (line.damagedQuantity ?? 0));
           item.current_quantity = Math.round((item.current_quantity + receivedNet) * 1000) / 1000;
           item.last_updated = input.receivedAt;
