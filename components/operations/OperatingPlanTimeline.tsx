@@ -8,6 +8,7 @@ import { colors, conceptTypography, density, iconStroke, radii } from "../../con
 import { useLocale } from "../../contexts/LocaleContext";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { OperatingPlanBucket, OperatingPlanItem } from "../../services/domain/operatingPlan";
+import { normalizeOperatingPlanTaskTitle } from "../../services/domain/presentationOperatingPlanTaskTitleIdentity";
 import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
@@ -174,7 +175,11 @@ function OperatingPlanItemRow({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("today.task.accessibility", {
-            title: presentation.title,
+            // MISE-005XQ: soft-null blank / Unicode-padded / control-bearing
+            // task titles before timeline-row a11y interpolation.
+            title:
+              normalizeOperatingPlanTaskTitle(presentation.title) ||
+              t("today.task.title.none"),
             detail: presentation.detail,
             action: actionLabel
           })}
