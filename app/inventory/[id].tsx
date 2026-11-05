@@ -53,6 +53,7 @@ export default function InventoryDetailScreen() {
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
+  const [shelfLifeDays, setShelfLifeDays] = useState("");
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
   const [savingSettings, setSavingSettings] = useState(false);
@@ -100,6 +101,12 @@ export default function InventoryDetailScreen() {
             useGrouping: false
           })
         );
+        setShelfLifeDays(
+          formatNumber(nextOutlook.item.shelf_life_days ?? 0, {
+            maximumFractionDigits: 0,
+            useGrouping: false
+          })
+        );
         setSettingErrors({});
       }
     } catch {
@@ -127,6 +134,7 @@ export default function InventoryDetailScreen() {
     setNoteText("");
     setParLevel("");
     setReorderThreshold("");
+    setShelfLifeDays("");
     setQuantityError(undefined);
     setSettingErrors({});
     setSavingSettings(false);
@@ -284,7 +292,8 @@ export default function InventoryDetailScreen() {
         parseNumber,
         formatNumber,
         t
-      )
+      ),
+      shelfLifeDays: validateShelfLifeDays(shelfLifeDays, parseNumber, t)
     };
     if (Object.values(nextSettingErrors).some(Boolean)) {
       setSettingErrors(nextSettingErrors);
@@ -301,7 +310,8 @@ export default function InventoryDetailScreen() {
     try {
       await updateInventoryItem(restaurantId, item.id, {
         par_level: parseNumber(parLevel) ?? 0,
-        reorder_threshold: parseNumber(reorderThreshold) ?? 0
+        reorder_threshold: parseNumber(reorderThreshold) ?? 0,
+        shelf_life_days: Math.floor(parseNumber(shelfLifeDays) ?? 0)
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await load();
@@ -595,6 +605,16 @@ export default function InventoryDetailScreen() {
               editable={actionsEditable && !busy}
               error={settingErrors.reorderThreshold}
             />
+            <Field
+              label={t("inventory.detail.shelfLifeDays")}
+              value={shelfLifeDays}
+              onChangeText={(value) => {
+                setShelfLifeDays(value);
+                setSettingErrors((current) => ({ ...current, shelfLifeDays: undefined }));
+              }}
+              editable={actionsEditable && !busy}
+              error={settingErrors.shelfLifeDays}
+            />
             {mutationAllowed ? (
               <Button
                 title={savingSettings ? t("inventory.detail.saving") : t("inventory.detail.saveSettings")}
@@ -696,6 +716,7 @@ function Field({
 interface InventorySettingErrors {
   parLevel?: string;
   reorderThreshold?: string;
+  shelfLifeDays?: string;
 }
 
 function isCanonicalUnitReady(item: InventoryItem) {
@@ -781,6 +802,26 @@ function validateInventoryNumber(
       field: label,
       maximum: formatNumber(operatingLimits.inventoryQuantity)
     });
+  }
+  return undefined;
+}
+
+function validateShelfLifeDays(
+  value: string,
+  parseNumber: ReturnType<typeof useLocale>["parseNumber"],
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  const label = t("inventory.detail.field.shelfLifeDays");
+  if (!value.trim()) return t("inventory.detail.fieldRequired", { field: label });
+  const parsed = parseNumber(value);
+  if (
+    parsed === null ||
+    !Number.isFinite(parsed) ||
+    parsed < 0 ||
+    parsed > 3650 ||
+    !Number.isInteger(parsed)
+  ) {
+    return t("inventory.detail.shelfLifeDaysRange");
   }
   return undefined;
 }

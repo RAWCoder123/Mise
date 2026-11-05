@@ -330,7 +330,10 @@ test("inventory policy edits regenerate guidance while on-hand changes require l
   const updateWorkflow = inventoryWorkflow.match(/export\s+async\s+function\s+updateInventoryItem[\s\S]*?\n\}/)?.[0] ?? "";
 
   assert.match(validation, /patch\.current_quantity[\s\S]*remain auditable/i);
-  assert.match(edgeWorkflow, /new Set\(\["par_level", "reorder_threshold"\]\)/i);
+  assert.match(
+    edgeWorkflow,
+    /new Set\(\[\s*"par_level",\s*"reorder_threshold",\s*"shelf_life_days"\s*\]\)/i
+  );
   assert.doesNotMatch(edgeWorkflow, /new Set\([^\n]+supplier_name/i);
   assert.match(updateWorkflow, /fetchAnchoredPlanningData[\s\S]*fetchRecommendationHistory/i);
   assert.match(updateWorkflow, /buildRecommendationInserts[\s\S]*buildInsightsFromData/i);

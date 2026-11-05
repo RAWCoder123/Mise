@@ -119,6 +119,11 @@ export interface InventoryItem {
   current_quantity: number;
   par_level: number;
   reorder_threshold: number;
+  /**
+   * Expected usable shelf life in whole days after receipt.
+   * 0 means unknown or not configured.
+   */
+  shelf_life_days?: number;
   estimated_unit_cost: number;
   supplier_id: string;
   /** Display snapshot. Hosted reads overlay the supplier's current name. */
@@ -688,7 +693,7 @@ export interface TodaySummary {
 }
 
 export type InventoryItemPatch = Partial<
-  Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold">
+  Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold" | "shelf_life_days">
 >;
 
 export type PosProvider = "Toast" | "Square" | "Clover" | "Lightspeed" | "Manual CSV Upload";
