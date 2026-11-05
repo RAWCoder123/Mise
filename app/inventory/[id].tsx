@@ -53,6 +53,7 @@ export default function InventoryDetailScreen() {
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
+  const [safetyStock, setSafetyStock] = useState("");
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
   const [savingSettings, setSavingSettings] = useState(false);
@@ -100,6 +101,12 @@ export default function InventoryDetailScreen() {
             useGrouping: false
           })
         );
+        setSafetyStock(
+          formatNumber(nextOutlook.item.safety_stock ?? 0, {
+            maximumFractionDigits: 2,
+            useGrouping: false
+          })
+        );
         setSettingErrors({});
       }
     } catch {
@@ -127,6 +134,7 @@ export default function InventoryDetailScreen() {
     setNoteText("");
     setParLevel("");
     setReorderThreshold("");
+    setSafetyStock("");
     setQuantityError(undefined);
     setSettingErrors({});
     setSavingSettings(false);
@@ -284,6 +292,13 @@ export default function InventoryDetailScreen() {
         parseNumber,
         formatNumber,
         t
+      ),
+      safetyStock: validateInventoryNumber(
+        safetyStock,
+        t("inventory.detail.field.safetyStock"),
+        parseNumber,
+        formatNumber,
+        t
       )
     };
     if (Object.values(nextSettingErrors).some(Boolean)) {
@@ -301,7 +316,8 @@ export default function InventoryDetailScreen() {
     try {
       await updateInventoryItem(restaurantId, item.id, {
         par_level: parseNumber(parLevel) ?? 0,
-        reorder_threshold: parseNumber(reorderThreshold) ?? 0
+        reorder_threshold: parseNumber(reorderThreshold) ?? 0,
+        safety_stock: parseNumber(safetyStock) ?? 0
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await load();
@@ -595,6 +611,16 @@ export default function InventoryDetailScreen() {
               editable={actionsEditable && !busy}
               error={settingErrors.reorderThreshold}
             />
+            <Field
+              label={t("inventory.detail.safetyStock", { unit: item.unit })}
+              value={safetyStock}
+              onChangeText={(value) => {
+                setSafetyStock(value);
+                setSettingErrors((current) => ({ ...current, safetyStock: undefined }));
+              }}
+              editable={actionsEditable && !busy}
+              error={settingErrors.safetyStock}
+            />
             {mutationAllowed ? (
               <Button
                 title={savingSettings ? t("inventory.detail.saving") : t("inventory.detail.saveSettings")}
@@ -696,6 +722,7 @@ function Field({
 interface InventorySettingErrors {
   parLevel?: string;
   reorderThreshold?: string;
+  safetyStock?: string;
 }
 
 function isCanonicalUnitReady(item: InventoryItem) {

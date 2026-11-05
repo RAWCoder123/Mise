@@ -365,6 +365,7 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
     current_quantity: asBoundedNonNegativeNumber(value.current_quantity, operatingLimits.inventoryQuantity),
     par_level: asBoundedNonNegativeNumber(value.par_level, operatingLimits.inventoryQuantity),
     reorder_threshold: asBoundedNonNegativeNumber(value.reorder_threshold, operatingLimits.inventoryQuantity),
+    safety_stock: asBoundedNonNegativeNumber(value.safety_stock, operatingLimits.inventoryQuantity),
     estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost),
     canonical_unit: canonicalUnit,
     canonical_quantity_per_unit: canonicalQuantityPerUnit,
@@ -436,7 +437,8 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
   const validated: InventoryItemPatch = { ...patch };
   for (const [field, label] of [
     ["par_level", "Par level"],
-    ["reorder_threshold", "Reorder threshold"]
+    ["reorder_threshold", "Reorder threshold"],
+    ["safety_stock", "Safety stock"]
   ] as const) {
     const value = validated[field];
     if (value === undefined) continue;
@@ -1191,6 +1193,12 @@ export function normalizeInventoryItemPatch(patch: InventoryItemPatch): Inventor
   if (normalized.reorder_threshold !== undefined) {
     normalized.reorder_threshold = asBoundedNonNegativeNumber(
       normalized.reorder_threshold,
+      operatingLimits.inventoryQuantity
+    );
+  }
+  if (normalized.safety_stock !== undefined) {
+    normalized.safety_stock = asBoundedNonNegativeNumber(
+      normalized.safety_stock,
       operatingLimits.inventoryQuantity
     );
   }

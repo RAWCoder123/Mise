@@ -9,6 +9,11 @@ import {
 import { toDateKeyInTimeZone } from "../../utils/format.ts";
 import type { InsightPresentationDescriptor } from "../../types/presentation.ts";
 import {
+  effectiveReorderThreshold,
+  normalizeSafetyStock,
+  projectedAtOrBelowSafetyStock
+} from "./inventorySafetyStockPolicy.ts";
+import {
   recipeDemandKey,
   saleDemandKey,
   saleMatchesRecipe,
@@ -26,6 +31,8 @@ export interface OperationalInventoryItem {
   current_quantity: number;
   par_level: number;
   reorder_threshold: number;
+  /** Minimum on-hand buffer. 0 / omitted means unused. */
+  safety_stock?: number;
   /**
    * Row mutation time. Not physical-count evidence: it moves for policy, cost, and
    * supplier edits. Planning freshness comes from `inventoryLedgerEvents` instead.
@@ -170,9 +177,15 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         ? mappedTodayUsage
         : 0;
     const projectedQuantity = Math.max(0, finiteNonNegative(item.current_quantity) - todayUsage);
-    const threshold = finiteNonNegative(item.reorder_threshold);
+    const safetyStock = normalizeSafetyStock(item.safety_stock);
+    const threshold = effectiveReorderThreshold(item.reorder_threshold, safetyStock);
     const isCritical = projectedQuantity <= 0;
     const isLow = !isCritical && projectedQuantity <= threshold;
+    const safetyStockRisk = projectedAtOrBelowSafetyStock(
+      projectedQuantity,
+      safetyStock,
+      item.reorder_threshold
+    );
     const suggested = Math.max(1, Math.ceil(finiteNonNegative(item.par_level) - projectedQuantity));
     const recentHandled = handled.get(item.id);
     // Only a newer verified physical count releases a handled recommendation;
@@ -189,9 +202,11 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       );
       const quantity = learnedQuantity ?? suggested;
       const coverage = baselineUsage > 0 ? projectedQuantity / baselineUsage : null;
-      const reason = coverage === null
-        ? `${item.item_name} is at or below its reorder level. Mise recommends restoring it to par.`
-        : `${item.item_name} has about ${round(coverage)} service days of projected coverage based on mapped demand.`;
+      const reason = safetyStockRisk
+        ? `${item.item_name} is at or below its ${round(safetyStock)} ${item.unit} safety stock. Mise recommends restoring it to par.`
+        : coverage === null
+          ? `${item.item_name} is at or below its reorder level. Mise recommends restoring it to par.`
+          : `${item.item_name} has about ${round(coverage)} service days of projected coverage based on mapped demand.`;
       recommendations.push({
         restaurant_id: snapshot.restaurantId,
         inventory_item_id: item.id,
@@ -209,9 +224,15 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         id: `insight_low_${item.id}`,
         restaurant_id: snapshot.restaurantId,
         insight_type: "inventory",
-        title: isCritical ? `${item.item_name} may run out today` : `${item.item_name} is below its normal level`,
+        title: isCritical
+          ? `${item.item_name} may run out today`
+          : safetyStockRisk
+            ? `${item.item_name} is at or below safety stock`
+            : `${item.item_name} is below its normal level`,
         description: `${item.item_name} is projected at ${round(projectedQuantity)} ${item.unit} after mapped POS demand.`,
-        why_it_matters: "This can interrupt prep or force an 86 mid-service.",
+        why_it_matters: safetyStockRisk
+          ? "The safety stock buffer is meant to absorb demand spikes and delivery delays."
+          : "This can interrupt prep or force an 86 mid-service.",
         recommended_action: `Check the walk-in, then add ${quantity} ${item.unit} on the next ${item.supplier_name} ticket.`,
         severity: isCritical ? "urgent" : "warning",
         created_at: now,
@@ -223,7 +244,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
             unit: item.unit,
             supplierName: item.supplier_name,
             suggestedOrderQuantity: quantity,
-            status: isCritical ? "Critical" : "Low"
+            status: isCritical ? "Critical" : "Low",
+            ...(safetyStockRisk ? { safetyStock } : {})
           }
         }
       });

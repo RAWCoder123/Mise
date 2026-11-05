@@ -119,6 +119,12 @@ export interface InventoryItem {
   current_quantity: number;
   par_level: number;
   reorder_threshold: number;
+  /**
+   * Minimum on-hand buffer in inventory units.
+   * 0 means unused; when positive, the effective reorder trigger is
+   * max(reorder_threshold, safety_stock).
+   */
+  safety_stock?: number;
   estimated_unit_cost: number;
   supplier_id: string;
   /** Display snapshot. Hosted reads overlay the supplier's current name. */
@@ -688,7 +694,7 @@ export interface TodaySummary {
 }
 
 export type InventoryItemPatch = Partial<
-  Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold">
+  Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold" | "safety_stock">
 >;
 
 export type PosProvider = "Toast" | "Square" | "Clover" | "Lightspeed" | "Manual CSV Upload";
