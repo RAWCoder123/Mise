@@ -7,15 +7,18 @@ import {
   assertDurableSupplierOrderLinesPresent,
   assertReceivableDeliveryLines,
   buildDeliveryLinesFromSupplierOrderLines,
-  deliveryClientIdForOrder
+  deliveryClientIdForOrder,
+  normalizeOptionalDocumentReference
 } from "../domain/supplierDelivery";
 import { getMiseRepository } from "./repository";
 
 export type { DeliveryHistoryEntry } from "./deliveryHistoryMerge";
 export { mergeDeliveryHistoryEntries } from "./deliveryHistoryMerge";
 export {
+  isSupplierDeliveryDocumentReferenceInvalidError,
   isSupplierDeliveryLinesSkippedError,
   isSupplierOrderLinesMissingError,
+  SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_INVALID_CODE,
   SUPPLIER_DELIVERY_LINES_SKIPPED_CODE,
   SUPPLIER_ORDER_LINES_MISSING_CODE,
   SupplierDeliveryLinesSkippedError,
@@ -57,12 +60,19 @@ export async function fetchDeliveryHistory(restaurantId: string): Promise<Delive
 export async function receiveSupplierOrderDelivery(
   restaurantId: string,
   supplierOrderId: string,
-  options: { notes?: string | null; receivedAt?: string; clientDeliveryId?: string } = {}
+  options: {
+    notes?: string | null;
+    documentReference?: string | null;
+    receivedAt?: string;
+    clientDeliveryId?: string;
+  } = {}
 ) {
   const normalizedRestaurantId = restaurantId.trim();
   const normalizedOrderId = supplierOrderId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
   if (!normalizedOrderId) throw new Error("Missing supplier order.");
+
+  const documentReference = normalizeOptionalDocumentReference(options.documentReference);
 
   const repository = getMiseRepository();
   const [order, orderLines, inventoryItems] = await Promise.all([
@@ -102,6 +112,7 @@ export async function receiveSupplierOrderDelivery(
     clientDeliveryId,
     receivedAt,
     lines: built.lines,
-    notes: options.notes ?? null
+    notes: options.notes ?? null,
+    documentReference
   });
 }

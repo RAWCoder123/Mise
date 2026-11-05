@@ -106,9 +106,43 @@ test("mergeDeliveryHistoryEntries includes pending outbox receipts as syncing", 
   assert.equal(history[0]!.syncing, true);
   assert.equal(history[0]!.itemName, "Chicken thighs");
   assert.equal(history[0]!.note, "Still syncing");
+  assert.equal(history[0]!.documentReference, null);
   assert.equal(history[1]!.syncing, false);
   assert.equal(history[1]!.clientEventId, "client-receipt-1");
   assert.equal(history[1]!.note, "Morning drop");
+  assert.equal(history[1]!.documentReference, null);
+});
+
+test("mergeDeliveryHistoryEntries surfaces operator_receipt sourceReference as document identity", () => {
+  const history = mergeDeliveryHistoryEntries({
+    events: [
+      {
+        id: "server-adhoc-1",
+        sequence: 1,
+        restaurantId: "restaurant-a",
+        inventoryItemId: "item-chicken",
+        eventType: "receipt",
+        quantity: 1000,
+        canonicalUnit: "g",
+        effectiveAt: "2026-08-01T12:00:00.000Z",
+        recordedAt: "2026-08-01T12:00:01.000Z",
+        source: "operator_receipt",
+        sourceReference: "INV-55",
+        reasonCode: null,
+        clientEventId: "client-adhoc-1",
+        idempotencyKey: "inventory:client-adhoc-1",
+        supersedesEventId: null,
+        actorUserId: "manager-1",
+        metadata: { note: "Dock drop" }
+      }
+    ],
+    itemNames: new Map([["item-chicken", "Chicken thighs"]]),
+    queued: []
+  });
+
+  assert.equal(history.length, 1);
+  assert.equal(history[0]!.documentReference, "INV-55");
+  assert.equal(history[0]!.note, "Dock drop");
 });
 
 test("mergeDeliveryHistoryEntries dedupes pending entries already accepted", async () => {

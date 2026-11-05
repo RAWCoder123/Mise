@@ -5,9 +5,54 @@ import type {
   SupplierOrderLine
 } from "../../types/mise";
 import type { SupplierDeliveryLineInput } from "../repositories/repositoryContracts";
+import { SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS } from "./securityLimits";
 
 export const SUPPLIER_DELIVERY_LINES_SKIPPED_CODE = "supplier_delivery_lines_skipped" as const;
 export const SUPPLIER_ORDER_LINES_MISSING_CODE = "supplier_order_lines_missing" as const;
+export const SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_INVALID_CODE =
+  "supplier_delivery_document_reference_invalid" as const;
+
+/**
+ * Optional invoice / PO document identity. Empty input becomes null; oversized
+ * or control-bearing values fail closed so operators cannot store unbounded or
+ * locale-unstable freeform text here.
+ */
+export function normalizeOptionalDocumentReference(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string") {
+    const error = new Error("Enter a valid invoice or PO number.");
+    (error as Error & { code?: string }).code = SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_INVALID_CODE;
+    throw error;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  // Match the SQL CHECK: reject ASCII C control characters before storage.
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
+    const error = new Error("Invoice or PO number cannot include control characters.");
+    (error as Error & { code?: string }).code = SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_INVALID_CODE;
+    throw error;
+  }
+  if (trimmed.length > SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS) {
+    const error = new Error(
+      `Invoice or PO number must be ${SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS} characters or fewer.`
+    );
+    (error as Error & { code?: string }).code = SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_INVALID_CODE;
+    throw error;
+  }
+  return trimmed;
+}
+
+export function isSupplierDeliveryDocumentReferenceInvalidError(
+  error: unknown
+): error is Error & { code: typeof SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_INVALID_CODE } {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return (
+    candidate.code === SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_INVALID_CODE ||
+    (typeof candidate.message === "string" &&
+      /invoice or po number/i.test(candidate.message))
+  );
+}
 
 export interface DeliveryLineBuildResult {
   lines: SupplierDeliveryLineInput[];
