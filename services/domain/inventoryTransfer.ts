@@ -175,3 +175,195 @@ export function reconcileLocationBalancesForDisplay(input: {
     balances: input.balances
   };
 }
+
+export type PlannedLocationBalanceReconcile = {
+  onHandQuantity: number;
+  allocatedBefore: number;
+  delta: number;
+  changed: boolean;
+  seededMain: boolean;
+  balanceUpdates: Array<{
+    storageLocationId: string;
+    quantityBefore: number;
+    quantityAfter: number;
+  }>;
+};
+
+/**
+ * Keep per-location balances mathematically aligned with restaurant on-hand.
+ * Increases land on Main; decreases reduce Main first, then other stations by id.
+ */
+export function planLocationBalanceReconcile(input: {
+  onHandQuantity: number;
+  balances: LocationBalanceInput[];
+  mainStorageLocationId: string;
+}): PlannedLocationBalanceReconcile {
+  const onHandQuantity = Number(input.onHandQuantity);
+  const mainStorageLocationId = String(input.mainStorageLocationId ?? "").trim();
+
+  if (!Number.isFinite(onHandQuantity) || onHandQuantity < 0) {
+    throw new Error("Inventory on-hand quantity is invalid.");
+  }
+  if (!mainStorageLocationId) {
+    throw new Error("Main storage location is required to reconcile balances.");
+  }
+
+  const working = new Map<string, number>();
+  for (const balance of input.balances) {
+    const locationId = String(balance.storageLocationId ?? "").trim();
+    const quantity = Number(balance.quantity);
+    if (!locationId || !Number.isFinite(quantity) || quantity < 0) {
+      throw new Error("Location balance data is invalid.");
+    }
+    working.set(locationId, quantity);
+  }
+
+  if (working.size === 0) {
+    return {
+      onHandQuantity,
+      allocatedBefore: 0,
+      delta: onHandQuantity,
+      changed: true,
+      seededMain: true,
+      balanceUpdates: [
+        {
+          storageLocationId: mainStorageLocationId,
+          quantityBefore: 0,
+          quantityAfter: onHandQuantity
+        }
+      ]
+    };
+  }
+
+  const allocatedBefore = [...working.values()].reduce((sum, quantity) => sum + quantity, 0);
+  const delta = onHandQuantity - allocatedBefore;
+  if (Math.abs(delta) < 1e-9) {
+    return {
+      onHandQuantity,
+      allocatedBefore,
+      delta: 0,
+      changed: false,
+      seededMain: false,
+      balanceUpdates: []
+    };
+  }
+
+  const beforeSnapshot = new Map(working);
+  if (!working.has(mainStorageLocationId)) {
+    working.set(mainStorageLocationId, 0);
+    beforeSnapshot.set(mainStorageLocationId, 0);
+  }
+
+  if (delta > 0) {
+    working.set(mainStorageLocationId, (working.get(mainStorageLocationId) ?? 0) + delta);
+  } else {
+    let remaining = -delta;
+    const reductionOrder = [
+      mainStorageLocationId,
+      ...[...working.keys()]
+        .filter((locationId) => locationId !== mainStorageLocationId)
+        .sort((a, b) => a.localeCompare(b))
+    ];
+    for (const locationId of reductionOrder) {
+      if (remaining <= 1e-12) break;
+      const current = working.get(locationId) ?? 0;
+      const remove = Math.min(current, remaining);
+      working.set(locationId, current - remove);
+      remaining -= remove;
+    }
+  }
+
+  const balanceUpdates = [...working.entries()]
+    .map(([storageLocationId, quantityAfter]) => ({
+      storageLocationId,
+      quantityBefore: beforeSnapshot.get(storageLocationId) ?? 0,
+      quantityAfter
+    }))
+    .filter((row) => Math.abs(row.quantityAfter - row.quantityBefore) >= 1e-9)
+    .sort((a, b) => {
+      if (a.storageLocationId === mainStorageLocationId) return -1;
+      if (b.storageLocationId === mainStorageLocationId) return 1;
+      return a.storageLocationId.localeCompare(b.storageLocationId);
+    });
+
+  return {
+    onHandQuantity,
+    allocatedBefore,
+    delta,
+    changed: balanceUpdates.length > 0,
+    seededMain: false,
+    balanceUpdates
+  };
+}
+
+export type PlannedReceiveLocationPutaway = {
+  mainStorageLocationId: string;
+  storageLocationId: string;
+  quantityReceived: number;
+  balanceUpdates: Array<{
+    storageLocationId: string;
+    quantityBefore: number;
+    quantityAfter: number;
+  }>;
+};
+
+/**
+ * After on-hand reconcile lands receive increases on Main, move the received
+ * quantity onto the chosen put-away station without changing restaurant on-hand.
+ */
+export function planReceiveLocationPutaway(input: {
+  mainStorageLocationId: string;
+  storageLocationId: string;
+  quantityReceived: number;
+  balances: LocationBalanceInput[];
+}): PlannedReceiveLocationPutaway | null {
+  const mainStorageLocationId = String(input.mainStorageLocationId ?? "").trim();
+  const storageLocationId = String(input.storageLocationId ?? "").trim();
+  const quantityReceived = Number(input.quantityReceived);
+
+  if (!mainStorageLocationId || !storageLocationId) {
+    throw new Error("Storage location is required for receive put-away.");
+  }
+  if (!Number.isFinite(quantityReceived) || quantityReceived < 0) {
+    throw new Error("Received quantity must be zero or greater.");
+  }
+  if (quantityReceived === 0 || storageLocationId === mainStorageLocationId) {
+    return null;
+  }
+
+  const working = new Map<string, number>();
+  for (const balance of input.balances) {
+    const locationId = String(balance.storageLocationId ?? "").trim();
+    const quantity = Number(balance.quantity);
+    if (!locationId || !Number.isFinite(quantity) || quantity < 0) {
+      throw new Error("Location balance data is invalid.");
+    }
+    working.set(locationId, quantity);
+  }
+
+  const mainBefore = working.get(mainStorageLocationId) ?? 0;
+  if (mainBefore + 1e-12 < quantityReceived) {
+    throw new Error("Insufficient Main quantity available for receive put-away.");
+  }
+  const targetBefore = working.get(storageLocationId) ?? 0;
+  const mainAfter = mainBefore - quantityReceived;
+  const targetAfter = targetBefore + quantityReceived;
+
+  return {
+    mainStorageLocationId,
+    storageLocationId,
+    quantityReceived,
+    balanceUpdates: [
+      {
+        storageLocationId: mainStorageLocationId,
+        quantityBefore: mainBefore,
+        quantityAfter: mainAfter
+      },
+      {
+        storageLocationId,
+        quantityBefore: targetBefore,
+        quantityAfter: targetAfter
+      }
+    ]
+  };
+}
