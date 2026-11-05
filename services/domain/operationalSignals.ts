@@ -9,6 +9,10 @@ import {
 import { toDateKeyInTimeZone } from "../../utils/format.ts";
 import type { InsightPresentationDescriptor } from "../../types/presentation.ts";
 import {
+  coverageExceedsShelfLife,
+  normalizeShelfLifeDays
+} from "./inventoryShelfLifePolicy.ts";
+import {
   recipeDemandKey,
   saleDemandKey,
   saleMatchesRecipe,
@@ -26,6 +30,8 @@ export interface OperationalInventoryItem {
   current_quantity: number;
   par_level: number;
   reorder_threshold: number;
+  /** Expected usable shelf life in whole days. 0 / omitted means not configured. */
+  shelf_life_days?: number;
   /**
    * Row mutation time. Not physical-count evidence: it moves for policy, cost, and
    * supplier edits. Planning freshness comes from `inventoryLedgerEvents` instead.
@@ -227,26 +233,37 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
           }
         }
       });
-    } else if (baselineUsage > 0 && projectedQuantity > baselineUsage * 3) {
-      insights.push({
-        id: `insight_overstock_${item.id}`,
-        restaurant_id: snapshot.restaurantId,
-        insight_type: "waste",
-        title: `${item.item_name} may be overstocked`,
-        description: `${round(projectedQuantity)} ${item.unit} is more than three service days of mapped demand.`,
-        why_it_matters: "Extra on hand can spoil or tie up cash before the next rush needs it.",
-        recommended_action: `Skip or trim the next ${item.item_name.toLowerCase()} order unless tonight’s sales stay hot.`,
-        severity: "info",
-        created_at: now,
-        presentation: {
-          code: "insight.rule.waste.overstock",
-          values: {
-            itemName: item.item_name,
-            quantity: projectedQuantity,
-            unit: item.unit
+    } else if (baselineUsage > 0) {
+      const coverage = projectedQuantity / baselineUsage;
+      const shelfLifeDays = normalizeShelfLifeDays(item.shelf_life_days);
+      const overstockedByShelfLife = coverageExceedsShelfLife(coverage, shelfLifeDays);
+      const overstockedByHeuristic = shelfLifeDays <= 0 && projectedQuantity > baselineUsage * 3;
+      if (overstockedByShelfLife || overstockedByHeuristic) {
+        insights.push({
+          id: `insight_overstock_${item.id}`,
+          restaurant_id: snapshot.restaurantId,
+          insight_type: "waste",
+          title: `${item.item_name} may be overstocked`,
+          description: overstockedByShelfLife
+            ? `${round(projectedQuantity)} ${item.unit} is about ${round(coverage)} service days of mapped demand, above the ${shelfLifeDays}-day shelf life.`
+            : `${round(projectedQuantity)} ${item.unit} is more than three service days of mapped demand.`,
+          why_it_matters: overstockedByShelfLife
+            ? "Projected coverage exceeds the configured shelf life, so spoilage risk is rising."
+            : "Extra on hand can spoil or tie up cash before the next rush needs it.",
+          recommended_action: `Skip or trim the next ${item.item_name.toLowerCase()} order unless tonight’s sales stay hot.`,
+          severity: "info",
+          created_at: now,
+          presentation: {
+            code: "insight.rule.waste.overstock",
+            values: {
+              itemName: item.item_name,
+              quantity: projectedQuantity,
+              unit: item.unit,
+              ...(overstockedByShelfLife ? { shelfLifeDays, daysCoverage: coverage } : {})
+            }
           }
-        }
-      });
+        });
+      }
     }
   }
 

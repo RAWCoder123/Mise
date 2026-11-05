@@ -35,6 +35,10 @@ import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/i
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
 import {
+  coverageExceedsShelfLife,
+  normalizeShelfLifeDays
+} from "./inventoryShelfLifePolicy";
+import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
   verifiedCountSupersedes,
@@ -423,7 +427,8 @@ export function buildInventoryPrediction(
     ...item,
     current_quantity: finiteNonNegative(item.current_quantity),
     par_level: finiteNonNegative(item.par_level),
-    reorder_threshold: finiteNonNegative(item.reorder_threshold)
+    reorder_threshold: finiteNonNegative(item.reorder_threshold),
+    shelf_life_days: normalizeShelfLifeDays(item.shelf_life_days)
   };
   const todaySales = sales.filter(
     (sale) => sale.restaurant_id === item.restaurant_id && isToday(sale, operatingDate)
@@ -593,9 +598,14 @@ function getCoverageLabel(
   projectedQuantity: number
 ) {
   if (daysCoverage === null || averageDailyUsage <= 0) return "Mise is still learning this pattern";
-  if (projectedQuantity > item.par_level * 1.35 || daysCoverage >= 8) return "Unusually high stock";
   if (daysCoverage <= 0.75) return "May run out today";
   if (daysCoverage <= 1.5) return "May run low tomorrow";
+  // Shelf-life waste copy only after acute stockout labels, so a zero-coverage
+  // item still reads as "run out today" rather than a softer spoilage warning.
+  if (coverageExceedsShelfLife(daysCoverage, item.shelf_life_days ?? 0)) {
+    return "May spoil before use";
+  }
+  if (projectedQuantity > item.par_level * 1.35 || daysCoverage >= 8) return "Unusually high stock";
   if (daysCoverage <= 3) return `Likely enough for ${Math.max(2, Math.ceil(daysCoverage))} days`;
   if (daysCoverage >= 5) return `Likely enough for ${Math.floor(daysCoverage)} days`;
   return "Likely enough for several days";
@@ -611,6 +621,9 @@ function getSuggestedAction(
     return `Order ${formatQuantity(suggestedOrderQuantity)} ${item.unit}`;
   }
   if (status === "Watch") return "Update count before ordering";
+  if (coverageExceedsShelfLife(daysCoverage, item.shelf_life_days ?? 0)) {
+    return "Prioritize use or delay next order";
+  }
   if (daysCoverage && daysCoverage >= 8) return "Delay next order";
   return "No order needed";
 }
@@ -627,6 +640,10 @@ function getWhyItMatters(
   }
   if (daysCoverage === null) return "Mise needs more sales history before it can predict coverage with confidence.";
   if (daysCoverage <= 1.5) return "Current stock may not cover tomorrow's projected demand.";
+  const shelfLifeDays = normalizeShelfLifeDays(item.shelf_life_days);
+  if (coverageExceedsShelfLife(daysCoverage, shelfLifeDays)) {
+    return `Projected coverage exceeds the ${shelfLifeDays}-day shelf life, so spoilage risk is rising.`;
+  }
   if (trend === "rising") return `${item.item_name} may move faster than your usual ordering rhythm.`;
   if (daysCoverage >= 8) return "This may tie up cash or create waste risk before the next order cycle.";
   return "Current stock appears aligned with recent usage.";

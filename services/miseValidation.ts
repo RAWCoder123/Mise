@@ -205,6 +205,11 @@ function optionalBoundedText(value: unknown, label: string, maximum: number) {
   return normalized;
 }
 
+function asBoundedNonNegativeInteger(value: unknown, maximum: number, fallback = 0) {
+  const numeric = asBoundedNonNegativeNumber(value, maximum, fallback);
+  return Math.min(maximum, Math.floor(numeric));
+}
+
 function asBoundedNonNegativeNumber(value: unknown, maximum: number, fallback = 0) {
   const parsed = asNumber(value, fallback);
   if (parsed <= 0) return 0;
@@ -365,6 +370,7 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
     current_quantity: asBoundedNonNegativeNumber(value.current_quantity, operatingLimits.inventoryQuantity),
     par_level: asBoundedNonNegativeNumber(value.par_level, operatingLimits.inventoryQuantity),
     reorder_threshold: asBoundedNonNegativeNumber(value.reorder_threshold, operatingLimits.inventoryQuantity),
+    shelf_life_days: asBoundedNonNegativeInteger(value.shelf_life_days, 3650),
     estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost),
     canonical_unit: canonicalUnit,
     canonical_quantity_per_unit: canonicalQuantityPerUnit,
@@ -449,6 +455,16 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
       throw new Error(
         `${label} must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
       );
+    }
+  }
+  if (validated.shelf_life_days !== undefined) {
+    if (
+      typeof validated.shelf_life_days !== "number" ||
+      !Number.isSafeInteger(validated.shelf_life_days) ||
+      validated.shelf_life_days < 0 ||
+      validated.shelf_life_days > 3650
+    ) {
+      throw new Error("Shelf life must be a whole number of days between 0 and 3650.");
     }
   }
   return validated;
@@ -1193,6 +1209,9 @@ export function normalizeInventoryItemPatch(patch: InventoryItemPatch): Inventor
       normalized.reorder_threshold,
       operatingLimits.inventoryQuantity
     );
+  }
+  if (normalized.shelf_life_days !== undefined) {
+    normalized.shelf_life_days = asBoundedNonNegativeInteger(normalized.shelf_life_days, 3650);
   }
   return normalized;
 }
