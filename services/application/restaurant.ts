@@ -178,6 +178,20 @@ export async function renameSupplier(
   );
 }
 
+export async function updateSupplierDeliverySchedule(
+  restaurantId: string,
+  supplierId: string,
+  deliveryDays: number[],
+  orderCutoffMinutes: number | null
+) {
+  return repository.updateSupplierDeliverySchedule(
+    requireSupplierAuthorityId(restaurantId, "restaurant"),
+    requireSupplierAuthorityId(supplierId),
+    deliveryDays,
+    orderCutoffMinutes
+  );
+}
+
 export async function fetchPOSStatus(restaurantId?: string | null) {
   return repository.fetchPOSStatus(restaurantId);
 }

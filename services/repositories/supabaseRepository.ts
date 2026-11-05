@@ -1195,6 +1195,26 @@ export function createSupabaseRepository(): MiseRepository {
       return normalizedSupplier;
     },
 
+    async updateSupplierDeliverySchedule(restaurantId, supplierId, deliveryDays, orderCutoffMinutes) {
+      const expectedSupplierId = requireHostedUuid(supplierId, "supplier");
+      const { data, error } = await client.rpc("update_supplier_delivery_schedule", {
+        p_restaurant_id: requireHostedUuid(restaurantId, "restaurant"),
+        p_supplier_id: expectedSupplierId,
+        p_delivery_days: deliveryDays,
+        p_order_cutoff_minutes: orderCutoffMinutes
+      });
+      if (error) throwRepositoryError(error, restaurantId);
+      const supplier = Array.isArray(data) ? data[0] : data;
+      if (!supplier || typeof supplier !== "object") {
+        throw new Error("Supplier delivery schedule update returned an invalid response.");
+      }
+      const normalizedSupplier = normalizeHostedSupplier(supplier as Supplier, restaurantId);
+      if (normalizedSupplier.id !== expectedSupplierId) {
+        throw new Error("Supplier delivery schedule update returned mismatched authority.");
+      }
+      return normalizedSupplier;
+    },
+
     async reassignInventoryItemSupplier(restaurantId, itemId, supplierId) {
       const expectedRestaurantId = requireHostedUuid(restaurantId, "restaurant");
       const expectedItemId = requireHostedUuid(itemId, "inventory item");
@@ -1286,17 +1306,22 @@ export function createSupabaseRepository(): MiseRepository {
     },
 
     async fetchPlanningData(restaurantId) {
-      const [inventoryResult, sales, mappingResult, restaurantResult] = await Promise.all([
+      const [inventoryResult, sales, mappingResult, restaurantResult, suppliersResult] = await Promise.all([
         client.from("inventory_items").select(inventorySupplierSelect).eq("restaurant_id", restaurantId).order("item_name"),
         fetchBoundedPlanningSales(restaurantId),
         client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
-        client.from("restaurants").select("timezone").eq("id", restaurantId).single()
+        client.from("restaurants").select("timezone").eq("id", restaurantId).single(),
+        client.from("suppliers").select("*").eq("restaurant_id", restaurantId).order("display_name").order("id")
       ]);
       if (inventoryResult.error) throw inventoryResult.error;
       if (mappingResult.error) throw mappingResult.error;
       if (restaurantResult.error) throw restaurantResult.error;
+      if (suppliersResult.error) throw suppliersResult.error;
       const timeZone = (restaurantResult.data as Pick<Restaurant, "timezone">).timezone;
       const providerMappings = await fetchVerifiedProviderMappings(restaurantId);
+      const suppliers = ((suppliersResult.data ?? []) as Supplier[]).map((supplier) =>
+        normalizeHostedSupplier(supplier, restaurantId)
+      );
       return {
         inventoryItems: (inventoryResult.data ?? []).map((row) =>
           normalizeInventoryItem(withCurrentSupplierDisplay(row, "Inventory item") as unknown as InventoryItem)
@@ -1305,7 +1330,12 @@ export function createSupabaseRepository(): MiseRepository {
         menuItemIngredients: ((mappingResult.data ?? []) as MenuItemIngredient[]).map(normalizeMenuItemIngredient),
         providerMappings,
         operatingDate: toDateKeyInTimeZone(new Date(), timeZone),
-        timeZone
+        timeZone,
+        supplierSchedules: suppliers.map((supplier) => ({
+          supplierId: supplier.id,
+          deliveryDays: supplier.delivery_days ?? [],
+          orderCutoffMinutes: supplier.order_cutoff_minutes ?? null
+        }))
       };
     },
 

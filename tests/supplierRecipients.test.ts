@@ -77,6 +77,8 @@ test("supplier recipient directory is tenant-scoped and binds recipients by dura
   assert.equal(directory[2]?.source, "current");
   assert.equal(directory.some((entry) => entry.recipientId === "foreign"), false);
   assert.equal(directory[0]?.supplierId, freshSupplierId);
+  assert.deepEqual(directory[0]?.deliveryDays, []);
+  assert.equal(directory[0]?.orderCutoffMinutes, null);
 });
 
 test("supplier recipient input normalizes durable IDs and bounded emails", () => {
@@ -164,9 +166,26 @@ test("supplier recipient route is stale-response guarded and staff read-only", (
   assert.match(screen, /editable=\{actionsEditable && !saving\}/);
   assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| nameUnchanged\}/);
   assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| emailUnchanged\}/);
+  assert.match(screen, /disabled=\{!actionsEditable \|\| saving \|\| scheduleUnchanged\}/);
+  assert.match(screen, /updateSupplierDeliverySchedule/);
   assert.match(screen, /minHeight: 44/);
   assert.match(screen, /accessibilityLabel=\{copy\.saveAccessibility/);
+  assert.match(screen, /accessibilityLabel=\{copy\.saveScheduleAccessibility/);
   assert.match(screen, /Record<AppLocale, SupplierCopy>/);
+});
+
+test("supplier delivery schedule migration pins schedule columns and manager RPC", () => {
+  const migration = readFileSync(
+    "supabase/migrations/20261105210000_supplier_delivery_schedule.sql",
+    "utf8"
+  );
+  assert.match(migration, /add column if not exists delivery_days smallint\[] not null default '\{\}'::smallint\[]/i);
+  assert.match(migration, /add column if not exists order_cutoff_minutes smallint/i);
+  assert.match(migration, /create or replace function public\.update_supplier_delivery_schedule/i);
+  assert.match(migration, /private\.has_restaurant_role\(\s*p_restaurant_id,\s*array\['owner', 'admin', 'manager'\]/i);
+  assert.match(migration, /'supplierSchedules'/);
+  assert.match(migration, /grant execute on function public\.update_supplier_delivery_schedule[^;]+to authenticated/is);
+  assert.match(migration, /revoke all on function public\.update_supplier_delivery_schedule[^;]+from public, anon, authenticated, service_role/is);
 });
 
 function recipient(patch: Partial<SupplierRecipient> = {}): SupplierRecipient {

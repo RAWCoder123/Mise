@@ -61,6 +61,10 @@ import type {
   SupplierDeliveryRecord,
   SupplierDeliveryStatus
 } from "./domain/supplierReliability";
+import {
+  normalizeDeliveryDays,
+  normalizeOrderCutoffMinutes
+} from "./domain/supplierDeliverySchedule";
 
 export { RESTAURANT_NAME_MAX_CHARACTERS, SUPPLIER_NOTE_MAX_CHARACTERS } from "./domain/securityLimits";
 
@@ -925,12 +929,16 @@ export function normalizeSupplier(value: Supplier): Supplier {
   if (value.display_name !== displayName) {
     throw new Error("Supplier identity returned a non-canonical display name.");
   }
+  const deliveryDays = normalizeDeliveryDays(value.delivery_days);
+  const orderCutoffMinutes = normalizeOrderCutoffMinutes(value.order_cutoff_minutes);
   return {
     ...value,
     id: requireSupplierAuthorityId(value.id),
     restaurant_id: requireSupplierAuthorityId(value.restaurant_id, "restaurant"),
     display_name: displayName,
     normalized_name: normalizedName,
+    delivery_days: deliveryDays,
+    order_cutoff_minutes: orderCutoffMinutes,
     created_at: asString(value.created_at),
     updated_at: asString(value.updated_at, value.created_at)
   };

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { router, useFocusEffect, useNavigation } from "expo-router";
 import { ArrowLeft, Mail, ShieldCheck } from "lucide-react-native";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge } from "../../components/ui/Badge";
@@ -18,9 +18,16 @@ import type { AppLocale } from "../../i18n/catalog";
 import {
   fetchSupplierRecipientDirectory,
   renameSupplier,
-  saveSupplierRecipient
+  saveSupplierRecipient,
+  updateSupplierDeliverySchedule
 } from "../../services/miseService";
 import type { SupplierRecipientDirectoryEntry } from "../../services/domain/supplierRecipients";
+import {
+  formatOrderCutoffMinutes,
+  normalizeDeliveryDays,
+  parseOrderCutoffInput,
+  type SupplierWeekday
+} from "../../services/domain/supplierDeliverySchedule";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -41,6 +48,8 @@ export default function SupplierRecipientsScreen() {
   const [entries, setEntries] = useState<SupplierRecipientDirectoryEntry[]>([]);
   const [draftEmails, setDraftEmails] = useState<Record<string, string>>({});
   const [draftNames, setDraftNames] = useState<Record<string, string>>({});
+  const [draftDeliveryDays, setDraftDeliveryDays] = useState<Record<string, number[]>>({});
+  const [draftCutoffs, setDraftCutoffs] = useState<Record<string, string>>({});
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -75,6 +84,15 @@ export default function SupplierRecipientsScreen() {
       setDraftNames(Object.fromEntries(
         nextEntries.map((entry) => [entry.supplierId, entry.supplierName])
       ));
+      setDraftDeliveryDays(Object.fromEntries(
+        nextEntries.map((entry) => [entry.supplierId, [...entry.deliveryDays]])
+      ));
+      setDraftCutoffs(Object.fromEntries(
+        nextEntries.map((entry) => [
+          entry.supplierId,
+          formatOrderCutoffMinutes(entry.orderCutoffMinutes)
+        ])
+      ));
       setLoadedRestaurantId(restaurantId);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -92,6 +110,8 @@ export default function SupplierRecipientsScreen() {
     setEntries([]);
     setDraftEmails({});
     setDraftNames({});
+    setDraftDeliveryDays({});
+    setDraftCutoffs({});
     setLoadedRestaurantId(null);
     setLoadError(false);
     setSavingKeys(new Set());
@@ -232,6 +252,87 @@ export default function SupplierRecipientsScreen() {
     }
   }
 
+  async function saveSchedule(entry: SupplierRecipientDirectoryEntry) {
+    if (!restaurant || !actionsEditable) return;
+    const restaurantId = restaurant.id;
+    const key = entry.supplierId;
+    if (actionLocksRef.current.has(key)) return;
+    const deliveryDays = normalizeDeliveryDays(draftDeliveryDays[key] ?? []);
+    const cutoffDraft = draftCutoffs[key] ?? "";
+    const cutoffMinutes = cutoffDraft.trim() ? parseOrderCutoffInput(cutoffDraft) : null;
+    if (cutoffDraft.trim() && cutoffMinutes === null) {
+      setNotice({
+        tone: "warning",
+        title: copy.invalidCutoffTitle,
+        message: copy.invalidCutoffBody
+      });
+      return;
+    }
+
+    actionLocksRef.current.add(key);
+    setSavingKeys((current) => new Set(current).add(key));
+    setNotice(null);
+    try {
+      const saved = await updateSupplierDeliverySchedule(
+        restaurantId,
+        entry.supplierId,
+        deliveryDays,
+        cutoffMinutes
+      );
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setEntries((current) => current.map((currentEntry) =>
+        currentEntry.supplierId === key
+          ? {
+              ...currentEntry,
+              deliveryDays: saved.delivery_days ?? [],
+              orderCutoffMinutes: saved.order_cutoff_minutes ?? null
+            }
+          : currentEntry
+      ));
+      setDraftDeliveryDays((current) => ({
+        ...current,
+        [key]: [...(saved.delivery_days ?? [])]
+      }));
+      setDraftCutoffs((current) => ({
+        ...current,
+        [key]: formatOrderCutoffMinutes(saved.order_cutoff_minutes)
+      }));
+      setNotice({
+        tone: "success",
+        title: copy.scheduleSavedTitle,
+        message: copy.scheduleSavedBody(entry.supplierName)
+      });
+    } catch {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNotice({
+        tone: "danger",
+        title: copy.scheduleErrorTitle,
+        message: copy.scheduleErrorBody(entry.supplierName)
+      });
+    } finally {
+      actionLocksRef.current.delete(key);
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setSavingKeys((current) => {
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
+      }
+    }
+  }
+
+  function toggleDeliveryDay(supplierId: string, day: SupplierWeekday) {
+    setDraftDeliveryDays((current) => {
+      const existing = new Set(normalizeDeliveryDays(current[supplierId] ?? []));
+      if (existing.has(day)) existing.delete(day);
+      else existing.add(day);
+      return {
+        ...current,
+        [supplierId]: [...existing].sort((left, right) => left - right)
+      };
+    });
+  }
+
   const configuredCount = useMemo(
     () => visibleEntries.filter((entry) => Boolean(entry.email)).length,
     [visibleEntries]
@@ -291,9 +392,14 @@ export default function SupplierRecipientsScreen() {
                 const key = entry.supplierId;
                 const draftEmail = draftEmails[key] ?? "";
                 const draftName = draftNames[key] ?? entry.supplierName;
+                const draftDays = normalizeDeliveryDays(draftDeliveryDays[key] ?? entry.deliveryDays);
+                const draftCutoff = draftCutoffs[key] ?? formatOrderCutoffMinutes(entry.orderCutoffMinutes);
                 const saving = savingKeys.has(key);
                 const emailUnchanged = draftEmail.trim().toLowerCase() === (entry.email ?? "").toLowerCase();
                 const nameUnchanged = canonicalSupplierName(draftName) === entry.supplierName;
+                const scheduleUnchanged =
+                  draftDays.join(",") === normalizeDeliveryDays(entry.deliveryDays).join(",") &&
+                  draftCutoff === formatOrderCutoffMinutes(entry.orderCutoffMinutes);
                 return (
                   <View
                     key={key}
@@ -377,12 +483,69 @@ export default function SupplierRecipientsScreen() {
                           disabled={!actionsEditable || saving || emailUnchanged}
                           onPress={() => void saveRecipient(entry)}
                         />
+                        <Text style={styles.inputLabel}>{copy.deliveryDaysLabel}</Text>
+                        <Text style={styles.helperText}>{copy.deliveryDaysHint}</Text>
+                        <View style={styles.dayRow}>
+                          {WEEKDAY_OPTIONS.map((day) => {
+                            const selected = draftDays.includes(day.value);
+                            return (
+                              <Pressable
+                                key={`${key}-${day.value}`}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected, disabled: !actionsEditable || saving }}
+                                accessibilityLabel={copy.dayAccessibility(
+                                  entry.supplierName,
+                                  copy.weekdayLabels[day.value] ?? day.label
+                                )}
+                                disabled={!actionsEditable || saving}
+                                onPress={() => toggleDeliveryDay(key, day.value)}
+                                style={[styles.dayChip, selected && styles.dayChipSelected]}
+                              >
+                                <Text style={[styles.dayChipText, selected && styles.dayChipTextSelected]}>
+                                  {day.short}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        <Text style={styles.inputLabel}>{copy.cutoffLabel}</Text>
+                        <TextInput
+                          accessibilityLabel={copy.cutoffAccessibility(entry.supplierName)}
+                          accessibilityHint={copy.cutoffHint}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          editable={actionsEditable && !saving}
+                          keyboardType="numbers-and-punctuation"
+                          onChangeText={(value) => setDraftCutoffs((current) => ({ ...current, [key]: value }))}
+                          placeholder={copy.cutoffPlaceholder}
+                          placeholderTextColor={colors.faint}
+                          returnKeyType="done"
+                          style={styles.input}
+                          value={draftCutoff}
+                        />
+                        <Button
+                          title={saving ? copy.saving : copy.saveSchedule}
+                          accessibilityLabel={copy.saveScheduleAccessibility(entry.supplierName)}
+                          accessibilityHint={copy.saveScheduleHint}
+                          variant="secondary"
+                          fullWidth
+                          disabled={!actionsEditable || saving || scheduleUnchanged}
+                          onPress={() => void saveSchedule(entry)}
+                        />
                       </View>
                     ) : (
                       <View accessible accessibilityLabel={copy.readOnlyEmailAccessibility(entry.supplierName, entry.email)}>
                         <Text style={styles.readOnlyLabel}>{copy.emailLabel}</Text>
                         <Text style={[styles.readOnlyEmail, !entry.email && styles.missingEmail]}>
                           {entry.email ?? copy.notConfigured}
+                        </Text>
+                        <Text style={styles.readOnlyLabel}>{copy.deliveryDaysLabel}</Text>
+                        <Text style={styles.readOnlyEmail}>
+                          {formatDeliveryDaysSummary(entry.deliveryDays, copy)}
+                        </Text>
+                        <Text style={styles.readOnlyLabel}>{copy.cutoffLabel}</Text>
+                        <Text style={[styles.readOnlyEmail, entry.orderCutoffMinutes == null && styles.missingEmail]}>
+                          {formatOrderCutoffMinutes(entry.orderCutoffMinutes) || copy.notConfigured}
                         </Text>
                       </View>
                     )}
@@ -411,6 +574,24 @@ function isValidSupplierName(value: string) {
   return canonical.length >= 1 && canonical.length <= 160 && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
+const WEEKDAY_OPTIONS: { value: SupplierWeekday; short: string; label: string }[] = [
+  { value: 0, short: "Su", label: "Sunday" },
+  { value: 1, short: "Mo", label: "Monday" },
+  { value: 2, short: "Tu", label: "Tuesday" },
+  { value: 3, short: "We", label: "Wednesday" },
+  { value: 4, short: "Th", label: "Thursday" },
+  { value: 5, short: "Fr", label: "Friday" },
+  { value: 6, short: "Sa", label: "Saturday" }
+];
+
+function formatDeliveryDaysSummary(days: readonly number[], copy: SupplierCopy) {
+  const normalized = normalizeDeliveryDays(days);
+  if (normalized.length === 0) return copy.notConfigured;
+  return normalized
+    .map((day) => copy.weekdayLabels[day] ?? WEEKDAY_OPTIONS[day]?.short ?? String(day))
+    .join(", ");
+}
+
 interface SupplierCopy {
   title: string;
   subtitle: string;
@@ -427,6 +608,8 @@ interface SupplierCopy {
   invalidBody: (supplier: string) => string;
   invalidNameTitle: string;
   invalidNameBody: string;
+  invalidCutoffTitle: string;
+  invalidCutoffBody: string;
   savedTitle: string;
   savedBody: (supplier: string) => string;
   saveErrorTitle: string;
@@ -435,6 +618,10 @@ interface SupplierCopy {
   renamedBody: (supplier: string) => string;
   renameErrorTitle: string;
   renameErrorBody: (supplier: string) => string;
+  scheduleSavedTitle: string;
+  scheduleSavedBody: (supplier: string) => string;
+  scheduleErrorTitle: string;
+  scheduleErrorBody: (supplier: string) => string;
   safetyTitle: string;
   safetyBody: string;
   sectionTitle: string;
@@ -457,6 +644,17 @@ interface SupplierCopy {
   emailPlaceholder: string;
   emailAccessibility: (supplier: string) => string;
   emailHint: string;
+  deliveryDaysLabel: string;
+  deliveryDaysHint: string;
+  dayAccessibility: (supplier: string, dayLabel: string) => string;
+  cutoffLabel: string;
+  cutoffPlaceholder: string;
+  cutoffAccessibility: (supplier: string) => string;
+  cutoffHint: string;
+  saveSchedule: string;
+  saveScheduleAccessibility: (supplier: string) => string;
+  saveScheduleHint: string;
+  weekdayLabels: Record<number, string>;
   save: string;
   saving: string;
   saveAccessibility: (supplier: string) => string;
@@ -482,6 +680,8 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     invalidBody: (supplier) => `Add a complete email address for ${supplier}.`,
     invalidNameTitle: "Enter a valid supplier name",
     invalidNameBody: "Use 1–160 characters without control characters.",
+    invalidCutoffTitle: "Enter a valid cutoff time",
+    invalidCutoffBody: "Use 24-hour HH:MM, or leave blank when the cutoff is unknown.",
     savedTitle: "Supplier email saved",
     savedBody: (supplier) => `${supplier} is ready for approved order emails.`,
     saveErrorTitle: "Supplier email was not saved",
@@ -490,10 +690,14 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     renamedBody: (supplier) => `${supplier} keeps its recipient, orders, and purchasing identity.`,
     renameErrorTitle: "Supplier was not renamed",
     renameErrorBody: (supplier) => `Try renaming ${supplier} again. The name may already be in use.`,
+    scheduleSavedTitle: "Delivery schedule saved",
+    scheduleSavedBody: (supplier) => `${supplier} delivery days and order cutoff are ready for recommendations.`,
+    scheduleErrorTitle: "Delivery schedule was not saved",
+    scheduleErrorBody: (supplier) => `Try saving the delivery schedule for ${supplier} again.`,
     safetyTitle: "Restaurant-scoped recipients",
     safetyBody: "Each supplier keeps one durable restaurant identity. Renaming it does not detach its recipient or create a different supplier.",
     sectionTitle: "Supplier directory",
-    sectionSubtitle: "Current suppliers and their approved-order recipients.",
+    sectionSubtitle: "Current suppliers, recipients, and delivery windows.",
     configuredCount: (configured, total) => `${configured} of ${total} ready`,
     emptyTitle: "No suppliers yet",
     emptyBody: "Add inventory suppliers during setup before configuring order recipients.",
@@ -512,6 +716,25 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     emailPlaceholder: "orders@supplier.com",
     emailAccessibility: (supplier) => `Order email for ${supplier}`,
     emailHint: "Enter the recipient used for approved supplier orders.",
+    deliveryDaysLabel: "Delivery days",
+    deliveryDaysHint: "Leave empty when the supplier schedule is unknown.",
+    dayAccessibility: (supplier, dayLabel) => `Toggle ${dayLabel} delivery for ${supplier}`,
+    cutoffLabel: "Order cutoff",
+    cutoffPlaceholder: "14:00",
+    cutoffAccessibility: (supplier) => `Order cutoff time for ${supplier}`,
+    cutoffHint: "Local restaurant time in HH:MM. Blank means unknown.",
+    saveSchedule: "Save schedule",
+    saveScheduleAccessibility: (supplier) => `Save delivery schedule for ${supplier}`,
+    saveScheduleHint: "Saves delivery days and cutoff for this restaurant only.",
+    weekdayLabels: {
+      0: "Sunday",
+      1: "Monday",
+      2: "Tuesday",
+      3: "Wednesday",
+      4: "Thursday",
+      5: "Friday",
+      6: "Saturday"
+    },
     save: "Save email",
     saving: "Saving",
     saveAccessibility: (supplier) => `Save order email for ${supplier}`,
@@ -535,6 +758,8 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     invalidBody: (supplier) => `Agrega una dirección de correo completa para ${supplier}.`,
     invalidNameTitle: "Ingresa un nombre de proveedor válido",
     invalidNameBody: "Usa entre 1 y 160 caracteres, sin caracteres de control.",
+    invalidCutoffTitle: "Ingresa una hora de corte válida",
+    invalidCutoffBody: "Usa el formato 24 h HH:MM, o déjalo vacío si la hora es desconocida.",
     savedTitle: "Correo del proveedor guardado",
     savedBody: (supplier) => `${supplier} está listo para recibir pedidos aprobados.`,
     saveErrorTitle: "No se guardó el correo",
@@ -543,10 +768,14 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     renamedBody: (supplier) => `${supplier} conserva su destinatario, pedidos e identidad de compra.`,
     renameErrorTitle: "No se cambió el nombre",
     renameErrorBody: (supplier) => `Intenta renombrar ${supplier} nuevamente. Es posible que el nombre ya esté en uso.`,
+    scheduleSavedTitle: "Horario de entrega guardado",
+    scheduleSavedBody: (supplier) => `Los días de entrega y el corte de pedidos de ${supplier} ya alimentan las recomendaciones.`,
+    scheduleErrorTitle: "No se guardó el horario",
+    scheduleErrorBody: (supplier) => `Intenta guardar nuevamente el horario de entrega de ${supplier}.`,
     safetyTitle: "Destinatarios por restaurante",
     safetyBody: "Cada proveedor conserva una identidad estable dentro del restaurante. Renombrarlo no desconecta su destinatario ni crea otro proveedor.",
     sectionTitle: "Directorio de proveedores",
-    sectionSubtitle: "Proveedores actuales y destinatarios de pedidos aprobados.",
+    sectionSubtitle: "Proveedores actuales, destinatarios y ventanas de entrega.",
     configuredCount: (configured, total) => `${configured} de ${total} listos`,
     emptyTitle: "Aún no hay proveedores",
     emptyBody: "Agrega proveedores de inventario durante la configuración antes de definir destinatarios.",
@@ -565,6 +794,25 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     emailPlaceholder: "pedidos@proveedor.com",
     emailAccessibility: (supplier) => `Correo para pedidos de ${supplier}`,
     emailHint: "Ingresa el destinatario que recibirá los pedidos aprobados.",
+    deliveryDaysLabel: "Días de entrega",
+    deliveryDaysHint: "Déjalo vacío si el horario del proveedor es desconocido.",
+    dayAccessibility: (supplier, dayLabel) => `Alternar entrega el ${dayLabel} para ${supplier}`,
+    cutoffLabel: "Hora de corte",
+    cutoffPlaceholder: "14:00",
+    cutoffAccessibility: (supplier) => `Hora de corte de pedidos para ${supplier}`,
+    cutoffHint: "Hora local del restaurante en HH:MM. Vacío significa desconocida.",
+    saveSchedule: "Guardar horario",
+    saveScheduleAccessibility: (supplier) => `Guardar horario de entrega de ${supplier}`,
+    saveScheduleHint: "Guarda los días de entrega y el corte solo en este restaurante.",
+    weekdayLabels: {
+      0: "domingo",
+      1: "lunes",
+      2: "martes",
+      3: "miércoles",
+      4: "jueves",
+      5: "viernes",
+      6: "sábado"
+    },
     save: "Guardar correo",
     saving: "Guardando",
     saveAccessibility: (supplier) => `Guardar correo para pedidos de ${supplier}`,
@@ -588,6 +836,8 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     invalidBody: (supplier) => `请为 ${supplier} 添加完整的邮箱地址。`,
     invalidNameTitle: "请输入有效的供应商名称",
     invalidNameBody: "请使用 1–160 个字符，且不要包含控制字符。",
+    invalidCutoffTitle: "请输入有效的截单时间",
+    invalidCutoffBody: "请使用 24 小时制 HH:MM，或留空表示未知。",
     savedTitle: "供应商邮箱已保存",
     savedBody: (supplier) => `${supplier} 已可接收批准后的订单邮件。`,
     saveErrorTitle: "未能保存供应商邮箱",
@@ -596,10 +846,14 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     renamedBody: (supplier) => `${supplier} 的收件人、订单和采购身份均保持不变。`,
     renameErrorTitle: "未能重命名供应商",
     renameErrorBody: (supplier) => `请再次尝试重命名 ${supplier}。该名称可能已被使用。`,
+    scheduleSavedTitle: "配送日程已保存",
+    scheduleSavedBody: (supplier) => `${supplier} 的配送日和截单时间已可用于建议。`,
+    scheduleErrorTitle: "未能保存配送日程",
+    scheduleErrorBody: (supplier) => `请重新保存 ${supplier} 的配送日程。`,
     safetyTitle: "餐厅专属收件人",
     safetyBody: "每个供应商在餐厅内都有一个持久身份。重命名不会断开收件人，也不会创建新的供应商。",
     sectionTitle: "供应商目录",
-    sectionSubtitle: "当前供应商及其已批准订单的收件人。",
+    sectionSubtitle: "当前供应商、收件人与配送窗口。",
     configuredCount: (configured, total) => `${configured}/${total} 已就绪`,
     emptyTitle: "尚无供应商",
     emptyBody: "请先在设置中添加库存供应商，再配置订单收件人。",
@@ -618,6 +872,25 @@ const supplierCopy: Record<AppLocale, SupplierCopy> = {
     emailPlaceholder: "orders@supplier.com",
     emailAccessibility: (supplier) => `${supplier} 的订单邮箱`,
     emailHint: "输入用于接收已批准供应商订单的收件人。",
+    deliveryDaysLabel: "配送日",
+    deliveryDaysHint: "若供应商日程未知，请留空。",
+    dayAccessibility: (supplier, dayLabel) => `切换 ${supplier} 的 ${dayLabel} 配送`,
+    cutoffLabel: "截单时间",
+    cutoffPlaceholder: "14:00",
+    cutoffAccessibility: (supplier) => `${supplier} 的截单时间`,
+    cutoffHint: "餐厅本地时间，格式 HH:MM。留空表示未知。",
+    saveSchedule: "保存日程",
+    saveScheduleAccessibility: (supplier) => `保存 ${supplier} 的配送日程`,
+    saveScheduleHint: "仅将配送日和截单时间保存到当前餐厅。",
+    weekdayLabels: {
+      0: "周日",
+      1: "周一",
+      2: "周二",
+      3: "周三",
+      4: "周四",
+      5: "周五",
+      6: "周六"
+    },
     save: "保存邮箱",
     saving: "正在保存",
     saveAccessibility: (supplier) => `保存 ${supplier} 的订单邮箱`,
@@ -668,6 +941,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...typography.caption
   },
+  helperText: {
+    color: colors.muted,
+    ...typography.caption
+  },
   input: {
     minHeight: 44,
     borderRadius: radii.md,
@@ -679,6 +956,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingHorizontal: 12,
     paddingVertical: 10
+  },
+  dayRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  dayChip: {
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceWarm,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8
+  },
+  dayChipSelected: {
+    backgroundColor: colors.text,
+    borderColor: colors.text
+  },
+  dayChipText: {
+    color: colors.text,
+    ...typography.caption
+  },
+  dayChipTextSelected: {
+    color: colors.surface
   },
   readOnlyLabel: {
     color: colors.muted,
