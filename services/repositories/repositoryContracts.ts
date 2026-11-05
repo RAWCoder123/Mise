@@ -78,7 +78,11 @@ import type {
   RecalculationRunStatus
 } from "../domain/recalculationSchedule";
 import type { SupplierDeliveryHistory } from "../domain/supplierReliability";
-import type { RecommendationWorkflowResult, SupplierOrderSentWorkflowResult } from "../domain/miseDomain";
+import type {
+  CancelSupplierOrderDraftResult,
+  RecommendationWorkflowResult,
+  SupplierOrderSentWorkflowResult
+} from "../domain/miseDomain";
 
 /**
  * One finished recalculation attempt, as recorded through
@@ -671,6 +675,10 @@ export interface MiseRepository {
     restaurantId: string,
     recommendationId: string
   ): Promise<RecommendationWorkflowResult>;
+  cancelSupplierOrderDraft(
+    restaurantId: string,
+    orderId: string
+  ): Promise<CancelSupplierOrderDraftResult>;
   fetchPurchaseDecisionPatterns(restaurantId: string): Promise<PurchaseDecisionPattern[]>;
   excludePurchaseDecisionEvent(
     restaurantId: string,
