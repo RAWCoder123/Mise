@@ -4,7 +4,7 @@ import { test } from "node:test";
 
 test("supplier send order-lines fingerprint migration is additive and SELECT-safe", () => {
   const migration = readFileSync(
-    "supabase/migrations/20260827030000_supplier_send_order_lines_fingerprint.sql",
+    "supabase/migrations/20261105090000_supplier_send_order_lines_fingerprint.sql",
     "utf8"
   );
   assert.match(migration, /create or replace function private\.build_supplier_send_content/);

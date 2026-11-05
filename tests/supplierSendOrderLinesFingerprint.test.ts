@@ -177,7 +177,7 @@ test("send content fails closed when a durable line lost its recommendation iden
 
 test("migration and domain no longer rebuild send lines from live recommendations", () => {
   const migration = readFileSync(
-    "supabase/migrations/20260827030000_supplier_send_order_lines_fingerprint.sql",
+    "supabase/migrations/20261105090000_supplier_send_order_lines_fingerprint.sql",
     "utf8"
   );
   const domain = readFileSync("services/domain/supplierSendContent.ts", "utf8");

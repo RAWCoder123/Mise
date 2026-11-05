@@ -1,8 +1,14 @@
 # Supplier send fingerprint from durable order lines
 
 Date: 2026-08-27  
-Branch: `cursor/mise-send-order-lines-fingerprint`  
+Branch: `cursor/mise-send-order-lines-fingerprint` (stale)  
 Stacked on: `cursor/mise-receive-order-lines` (#197) → `cursor/mise-supplier-order-lines` (#196)
+
+## Status
+
+Superseded by the 2026-11-05 main rebase tip:
+`docs/automation-reports/2026-11-05-send-order-lines-fingerprint-main-rebase.md`
+(`cursor/mise-send-order-lines-fingerprint-main-rebase`, stacked on #1109).
 
 ## Summary
 
@@ -17,18 +23,12 @@ quantities instead of live `purchase_recommendations.recommended_quantity`. The
 - Expected `order_message` body is rebuilt from durable lines for equality checks
 - Line supplier identity in the fingerprint comes from the order (durable supplier ID)
 
-## Paths
+## Paths (stale timestamps)
 
 - `supabase/migrations/20260827030000_supplier_send_order_lines_fingerprint.sql`
+  (rebased tip uses `20261105090000_…`)
 - `supabase/tests/database/supplier_send_order_lines_fingerprint.test.sql`
 - `services/domain/supplierSendContent.ts`
 - `services/repositories/demoRepository.ts`
 - `tests/supplierSendOrderLinesFingerprint.test.ts`
 - `docs/pilot/FIRST_RESTAURANT_GAP_AUDIT.md`
-
-## Verification
-
-- `npm run typecheck`
-- `node --test tests/supplierSendOrderLinesFingerprint.test.ts`
-- `npm test`
-- `npm run security:backend`
