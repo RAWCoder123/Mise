@@ -35,6 +35,11 @@ import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/i
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
 import {
+  effectiveReorderThreshold,
+  normalizeSafetyStock,
+  projectedAtOrBelowSafetyStock
+} from "./inventorySafetyStockPolicy";
+import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
   verifiedCountSupersedes,
@@ -423,7 +428,8 @@ export function buildInventoryPrediction(
     ...item,
     current_quantity: finiteNonNegative(item.current_quantity),
     par_level: finiteNonNegative(item.par_level),
-    reorder_threshold: finiteNonNegative(item.reorder_threshold)
+    reorder_threshold: finiteNonNegative(item.reorder_threshold),
+    safety_stock: normalizeSafetyStock(item.safety_stock)
   };
   const todaySales = sales.filter(
     (sale) => sale.restaurant_id === item.restaurant_id && isToday(sale, operatingDate)
@@ -596,6 +602,17 @@ function getCoverageLabel(
   if (projectedQuantity > item.par_level * 1.35 || daysCoverage >= 8) return "Unusually high stock";
   if (daysCoverage <= 0.75) return "May run out today";
   if (daysCoverage <= 1.5) return "May run low tomorrow";
+  // Safety-stock copy only after acute stockout labels, so a zero-coverage item
+  // still reads as "run out today" rather than a softer buffer warning.
+  if (
+    projectedAtOrBelowSafetyStock(
+      projectedQuantity,
+      item.safety_stock,
+      item.reorder_threshold
+    )
+  ) {
+    return "At or below safety stock";
+  }
   if (daysCoverage <= 3) return `Likely enough for ${Math.max(2, Math.ceil(daysCoverage))} days`;
   if (daysCoverage >= 5) return `Likely enough for ${Math.floor(daysCoverage)} days`;
   return "Likely enough for several days";
@@ -622,11 +639,23 @@ function getWhyItMatters(
   todayDepletion: number,
   projectedQuantity: number
 ) {
-  if (todayDepletion > 0 && projectedQuantity <= item.reorder_threshold) {
+  const safetyStock = normalizeSafetyStock(item.safety_stock);
+  const reorderTrigger = effectiveReorderThreshold(item.reorder_threshold, safetyStock);
+  if (todayDepletion > 0 && projectedQuantity <= reorderTrigger) {
+    if (
+      projectedAtOrBelowSafetyStock(projectedQuantity, safetyStock, item.reorder_threshold)
+    ) {
+      return "Mapped POS sales have pushed projected stock at or below the configured safety stock.";
+    }
     return "Mapped POS sales have pushed projected stock below the reorder threshold.";
   }
   if (daysCoverage === null) return "Mise needs more sales history before it can predict coverage with confidence.";
   if (daysCoverage <= 1.5) return "Current stock may not cover tomorrow's projected demand.";
+  if (
+    projectedAtOrBelowSafetyStock(projectedQuantity, safetyStock, item.reorder_threshold)
+  ) {
+    return `Projected stock is at or below the ${formatQuantity(safetyStock)} ${item.unit} safety stock buffer.`;
+  }
   if (trend === "rising") return `${item.item_name} may move faster than your usual ordering rhythm.`;
   if (daysCoverage >= 8) return "This may tie up cash or create waste risk before the next order cycle.";
   return "Current stock appears aligned with recent usage.";

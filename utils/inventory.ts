@@ -1,3 +1,4 @@
+import { effectiveReorderThreshold } from "../services/domain/inventorySafetyStockPolicy";
 import type { InventoryItem, InventoryStatus } from "../types/mise";
 
 export function getInventoryStatus(item: InventoryItem): InventoryStatus {
@@ -5,9 +6,10 @@ export function getInventoryStatus(item: InventoryItem): InventoryStatus {
 }
 
 export function getInventoryStatusForQuantity(item: InventoryItem, quantity: number): InventoryStatus {
-  if (quantity <= item.reorder_threshold * 0.75) return "Critical";
+  const threshold = effectiveReorderThreshold(item.reorder_threshold, item.safety_stock);
+  if (quantity <= threshold * 0.75) return "Critical";
   if (quantity > item.par_level) return "Good";
-  if (quantity > item.reorder_threshold) return "Watch";
+  if (quantity > threshold) return "Watch";
   return "Low";
 }
 
