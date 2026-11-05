@@ -247,7 +247,11 @@ Deno.serve(async (req) => {
               apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
               "content-type": "application/json",
             },
-            body: JSON.stringify({ action: "refresh_signals", restaurantId }),
+            body: JSON.stringify({
+              action: "refresh_signals",
+              restaurantId,
+              syncImportId: applied?.importId ?? null,
+            }),
           },
         );
         if (!refreshResponse.ok) {

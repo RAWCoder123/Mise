@@ -2,6 +2,11 @@ import { calculateOperationalSignals, type OperationalPlanningSnapshot } from ".
 import { withPendingCountEvidence } from "../../../services/domain/inventoryCountAuthority.ts";
 import { inventoryUnitsAreCompatible } from "../../../services/domain/inventoryUnits.ts";
 import {
+  activityEventToServiceAppendParams,
+  fromPosPlanningSignalsRefreshed,
+  posSyncPlanningSequenceId
+} from "../../../services/domain/activityEvents.ts";
+import {
   firewallBlockedResponse,
   handleError,
   HttpError,
@@ -241,6 +246,18 @@ async function refreshWithRetry(
         p_insights: insights,
         p_complete_setup: completeSetup,
         p_setup_metadata: setupMetadata
+      }).then(async (committed) => {
+        if (action === "refresh_signals") {
+          await maybeRecordPosSyncPlanningActivity(
+            securitySupabase,
+            actorUserId,
+            restaurantId,
+            body,
+            recommendations.length,
+            insights.length
+          );
+        }
+        return committed;
       });
     } catch (error) {
       lastError = error;
@@ -248,6 +265,40 @@ async function refreshWithRetry(
     }
   }
   throw lastError;
+}
+
+async function maybeRecordPosSyncPlanningActivity(
+  securitySupabase: Parameters<typeof serviceRpc>[0],
+  actorUserId: string,
+  restaurantId: string,
+  body: Record<string, unknown>,
+  recommendationCount: number,
+  insightCount: number
+) {
+  const rawImportId = body.syncImportId ?? body.importId;
+  if (rawImportId == null || rawImportId === "") return;
+  // Hosted sales_imports.id is a UUID; ignore malformed handoffs fail-closed.
+  let syncImportId: string;
+  try {
+    syncImportId = requireUuid(rawImportId, "syncImportId");
+  } catch {
+    return;
+  }
+  const sequenceId = posSyncPlanningSequenceId(syncImportId);
+  if (!sequenceId) return;
+
+  const event = fromPosPlanningSignalsRefreshed({
+    restaurantId,
+    occurredAt: new Date().toISOString(),
+    importId: syncImportId,
+    recommendationCount,
+    insightCount
+  });
+  await serviceRpc(
+    securitySupabase,
+    "service_append_activity_event",
+    activityEventToServiceAppendParams(event, { actorUserId })
+  );
 }
 
 async function runCountSessionDraftAction(
