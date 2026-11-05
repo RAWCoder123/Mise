@@ -252,6 +252,18 @@ export interface PosIntegration {
   updated_at: string;
 }
 
+export interface PosLocation {
+  id: string;
+  restaurant_id: string;
+  pos_integration_id: string;
+  external_location_id: string;
+  display_name: string;
+  timezone: string | null;
+  status: "active" | "paused" | "disconnected";
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SalesImport {
   id: string;
   restaurant_id: string;
