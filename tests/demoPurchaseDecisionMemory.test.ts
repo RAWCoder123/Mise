@@ -41,7 +41,7 @@ test("demo approval, replay, undo, dismissal, and exclusion mirror append-only p
   const storageKey = [...values.keys()].find((key) => key.includes("demo-store"));
   assert.ok(storageKey);
   let stored = JSON.parse(values.get(storageKey)!) as DemoState;
-  assert.equal(stored.schema_version, 13);
+  assert.equal(stored.schema_version, 14);
   assert.equal(stored.purchaseDecisionEvents.length, 1);
   assert.equal(stored.purchaseDecisionEvents[0]!.decisionType, "approve_with_override");
   assert.equal(stored.purchaseDecisionEvents[0]!.recommendedQuantity, recommendation.recommended_quantity);

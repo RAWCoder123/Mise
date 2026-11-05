@@ -42,7 +42,8 @@ export type ActivityType =
   | "restaurant_memory_updated"
   | "inventory_count_recorded"
   | "purchase_lines_recorded"
-  | "purchase_line_confidence_downgraded";
+  | "purchase_line_confidence_downgraded"
+  | "inventory_transfer_recorded";
 
 export type ActivityCategory =
   | "inventory"

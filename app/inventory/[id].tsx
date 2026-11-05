@@ -24,19 +24,33 @@ import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
 import {
   addInventoryItemToOrder,
+  createStorageLocation,
   fetchInventoryItemOutlook,
+  fetchInventoryLocationBalances,
   fetchQueuedInventoryEvents,
+  fetchStorageLocations,
   flushQueuedInventoryEvents,
   queueInventoryOperation,
+  transferInventory,
   updateInventoryItem
 } from "../../services/miseService";
+import { reconcileLocationBalancesForDisplay } from "../../services/domain/inventoryTransfer";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
-import { canManageRestaurantData } from "../../services/tenantAccess";
+import {
+  canManageRestaurantData,
+  canManageStorageLocations,
+  canTransferInventory
+} from "../../services/tenantAccess";
 import { operatingLimits } from "../../services/miseValidation";
-import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
+import type {
+  InventoryItem,
+  InventoryLocationBalance,
+  InventoryOutlookItem,
+  StorageLocation
+} from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
 
 type InventoryOperatorAction = "count" | "receipt" | "waste" | "stockout";
@@ -62,6 +76,16 @@ export default function InventoryDetailScreen() {
   const [messageIsError, setMessageIsError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [hubLoadError, setHubLoadError] = useState(false);
+  const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
+  const [locationBalances, setLocationBalances] = useState<InventoryLocationBalance[]>([]);
+  const [fromStorageLocationId, setFromStorageLocationId] = useState("");
+  const [toStorageLocationId, setToStorageLocationId] = useState("");
+  const [transferQuantity, setTransferQuantity] = useState("");
+  const [transferNote, setTransferNote] = useState("");
+  const [newLocationName, setNewLocationName] = useState("");
+  const [transferErrors, setTransferErrors] = useState<TransferFieldErrors>({});
+  const [submittingTransfer, setSubmittingTransfer] = useState(false);
+  const [addingLocation, setAddingLocation] = useState(false);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -81,13 +105,33 @@ export default function InventoryDetailScreen() {
     setMessageIsError(false);
     setHubLoadError(false);
     try {
-      const [nextOutlook, nextQueue] = await Promise.all([
+      const [nextOutlook, nextQueue, nextLocations, nextBalances] = await Promise.all([
         fetchInventoryItemOutlook(restaurantId, itemId),
-        fetchQueuedInventoryEvents(restaurantId)
+        fetchQueuedInventoryEvents(restaurantId),
+        fetchStorageLocations(restaurantId),
+        fetchInventoryLocationBalances(restaurantId, itemId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(nextOutlook);
       setQueueEntries(nextQueue.filter((entry) => entry.event.inventoryItemId === itemId));
+      setStorageLocations(nextLocations);
+      setLocationBalances(nextBalances);
+      const main =
+        nextLocations.find((location) => location.name.toLowerCase() === "main") ?? nextLocations[0];
+      const secondary =
+        nextLocations.find((location) => location.id !== main?.id) ?? nextLocations[1] ?? null;
+      setFromStorageLocationId((current) =>
+        current && nextLocations.some((location) => location.id === current)
+          ? current
+          : main?.id ?? ""
+      );
+      setToStorageLocationId((current) =>
+        current &&
+        nextLocations.some((location) => location.id === current) &&
+        current !== (main?.id ?? "")
+          ? current
+          : secondary?.id ?? ""
+      );
       setLoadedRestaurantId(restaurantId);
       setHubLoadError(false);
       if (nextOutlook) {
@@ -106,6 +150,8 @@ export default function InventoryDetailScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setOutlook(null);
       setQueueEntries([]);
+      setStorageLocations([]);
+      setLocationBalances([]);
       setHubLoadError(true);
       setMessage(t("inventory.detail.loadError"));
       setMessageIsError(true);
@@ -122,6 +168,16 @@ export default function InventoryDetailScreen() {
     setHubLoadError(false);
     setOutlook(null);
     setQueueEntries([]);
+    setStorageLocations([]);
+    setLocationBalances([]);
+    setFromStorageLocationId("");
+    setToStorageLocationId("");
+    setTransferQuantity("");
+    setTransferNote("");
+    setNewLocationName("");
+    setTransferErrors({});
+    setSubmittingTransfer(false);
+    setAddingLocation(false);
     setOperation("count");
     setQuantityText("");
     setNoteText("");
@@ -144,6 +200,8 @@ export default function InventoryDetailScreen() {
   );
 
   const canManage = canManageRestaurantData(memberships, restaurant?.id);
+  const canTransfer = canTransferInventory(memberships, restaurant?.id);
+  const canManageLocations = canManageStorageLocations(memberships, restaurant?.id);
   const hubLoadState = resolveRestaurantScopedHubLoadState({
     restaurantId: restaurant?.id,
     loadedRestaurantId,
@@ -151,14 +209,33 @@ export default function InventoryDetailScreen() {
   });
   const hubReady = hubLoadState === "ready";
   const mutationAllowed = canManage && hubReady;
+  const transferAllowed = canTransfer && hubReady;
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canManage,
     hubReady,
-    busy: submittingOperation || savingSettings
+    busy: submittingOperation || savingSettings || submittingTransfer || addingLocation
+  });
+  const transferEditable = presentRestaurantScopedHubActionsEditable({
+    allowed: canTransfer,
+    hubReady,
+    busy: submittingTransfer || addingLocation
   });
   const visibleOutlook = hubReady ? outlook : null;
   const visibleQueue = hubReady ? queueEntries : [];
   const item = visibleOutlook?.item ?? null;
+  const balanceView =
+    item &&
+    reconcileLocationBalancesForDisplay({
+      onHandQuantity: item.current_quantity,
+      balances: locationBalances.map((balance) => {
+        const location = storageLocations.find((entry) => entry.id === balance.storage_location_id);
+        return {
+          storageLocationId: balance.storage_location_id,
+          name: location?.name ?? balance.storage_location_id,
+          quantity: balance.quantity
+        };
+      })
+    });
   const prediction = visibleOutlook?.prediction ?? null;
   const localizedPrediction =
     item && prediction ? localizeInventoryPrediction(t, formatNumber, item, prediction) : null;
@@ -192,7 +269,110 @@ export default function InventoryDetailScreen() {
     [t]
   );
 
+
+  async function submitTransfer() {
+    if (!restaurant || !item || !transferEditable) {
+      setMessage(t("inventory.detail.viewOnlyInventory"));
+      setMessageIsError(true);
+      return;
+    }
+    const quantityError =
+      !transferQuantity.trim()
+        ? t("inventory.detail.fieldRequired", { field: t("inventory.detail.transferQuantity", { unit: item.unit }) })
+        : validateTransferQuantity(transferQuantity, parseNumber, formatNumber, t);
+    const nextErrors: TransferFieldErrors = {
+      transferQuantity: quantityError,
+      transferFrom: !fromStorageLocationId
+        ? t("inventory.detail.fieldRequired", { field: t("inventory.detail.transferFrom") })
+        : undefined,
+      transferTo: !toStorageLocationId
+        ? t("inventory.detail.fieldRequired", { field: t("inventory.detail.transferTo") })
+        : undefined,
+      transferNote:
+        transferNote.trim().length > 240 ? t("inventory.detail.transferNoteTooLong") : undefined
+    };
+    if (
+      nextErrors.transferQuantity ||
+      nextErrors.transferFrom ||
+      nextErrors.transferTo ||
+      nextErrors.transferNote
+    ) {
+      setTransferErrors(nextErrors);
+      setMessage(t("inventory.detail.reviewTransfer"));
+      setMessageIsError(true);
+      return;
+    }
+    const restaurantId = restaurant.id;
+    setTransferErrors({});
+    setSubmittingTransfer(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      await transferInventory(
+        restaurantId,
+        item.id,
+        fromStorageLocationId,
+        toStorageLocationId,
+        parseNumber(transferQuantity) ?? 0,
+        transferNote.trim() || null
+      );
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setTransferQuantity("");
+      setTransferNote("");
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(t("inventory.detail.transferRecorded"));
+      setMessageIsError(false);
+    } catch {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(t("inventory.detail.transferError"));
+      setMessageIsError(true);
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setSubmittingTransfer(false);
+    }
+  }
+
+  async function addLocation() {
+    if (!restaurant || !canManageLocations || !hubReady) {
+      setMessage(t("inventory.detail.viewOnlyInventory"));
+      setMessageIsError(true);
+      return;
+    }
+    const name = newLocationName.trim();
+    if (!name) {
+      setTransferErrors((current) => ({
+        ...current,
+        newLocation: t("inventory.detail.fieldRequired", { field: t("inventory.detail.newLocation") })
+      }));
+      setMessage(t("inventory.detail.reviewTransfer"));
+      setMessageIsError(true);
+      return;
+    }
+    const restaurantId = restaurant.id;
+    setAddingLocation(true);
+    setMessage(null);
+    setMessageIsError(false);
+    try {
+      const created = await createStorageLocation(restaurantId, name);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setNewLocationName("");
+      setTransferErrors((current) => ({ ...current, newLocation: undefined }));
+      await load();
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setToStorageLocationId(created.id);
+      setMessage(t("inventory.detail.locationAdded"));
+      setMessageIsError(false);
+    } catch {
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      setMessage(t("inventory.detail.locationError"));
+      setMessageIsError(true);
+    } finally {
+      if (activeRestaurantIdRef.current === restaurantId) setAddingLocation(false);
+    }
+  }
+
   function goBackToInventory() {
+
     if (navigation.canGoBack()) navigation.goBack();
     else router.replace("/inventory");
   }
@@ -342,7 +522,7 @@ export default function InventoryDetailScreen() {
     }
   }
 
-  const busy = submittingOperation || savingSettings;
+  const busy = submittingOperation || savingSettings || submittingTransfer || addingLocation;
 
   return (
     <Screen
@@ -399,7 +579,7 @@ export default function InventoryDetailScreen() {
             ]}
           />
 
-          {!canManage ? (
+          {!canManage && !canTransfer ? (
             <StatusNotice
               title={t("inventory.detail.viewOnly.title")}
               message={t("inventory.detail.viewOnly.body")}
@@ -449,6 +629,140 @@ export default function InventoryDetailScreen() {
               </Text>
             </View>
           </Card>
+
+          {transferAllowed ? (
+            <Card>
+              <Text style={styles.cardTitle}>{t("inventory.detail.transfer")}</Text>
+              <Text style={styles.copy}>{t("inventory.detail.transferHelp")}</Text>
+              {balanceView && balanceView.balances.length > 0 ? (
+                <View style={styles.balanceList}>
+                  <Text style={styles.kicker}>{t("inventory.detail.transferBalances")}</Text>
+                  {balanceView.balances.map((balance) => (
+                    <Text key={balance.storageLocationId} style={styles.copy}>
+                      {balance.name}:{" "}
+                      {formatNumber(balance.quantity, { maximumFractionDigits: 1 })} {item.unit}
+                    </Text>
+                  ))}
+                  {balanceView.unallocatedQuantity > 0 ? (
+                    <Text style={styles.copy}>
+                      {t("inventory.detail.transferUnallocated", {
+                        quantity: formatNumber(balanceView.unallocatedQuantity, {
+                          maximumFractionDigits: 1
+                        }),
+                        unit: item.unit
+                      })}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              <Text style={styles.label}>{t("inventory.detail.transferFrom")}</Text>
+              <FilterRow
+                accessibilityLabel={t("inventory.detail.locationChooser")}
+                options={storageLocations.map((location) => ({
+                  value: location.id,
+                  label: location.name
+                }))}
+                value={fromStorageLocationId}
+                onValueChange={(value) => {
+                  setFromStorageLocationId(value);
+                  setTransferErrors((current) => ({ ...current, transferFrom: undefined }));
+                }}
+              />
+              {transferErrors.transferFrom ? (
+                <Text style={styles.fieldError}>{transferErrors.transferFrom}</Text>
+              ) : null}
+              <Text style={styles.label}>{t("inventory.detail.transferTo")}</Text>
+              <FilterRow
+                accessibilityLabel={t("inventory.detail.locationChooser")}
+                options={storageLocations
+                  .filter((location) => location.id !== fromStorageLocationId)
+                  .map((location) => ({
+                    value: location.id,
+                    label: location.name
+                  }))}
+                value={toStorageLocationId}
+                onValueChange={(value) => {
+                  setToStorageLocationId(value);
+                  setTransferErrors((current) => ({ ...current, transferTo: undefined }));
+                }}
+              />
+              {transferErrors.transferTo ? (
+                <Text style={styles.fieldError}>{transferErrors.transferTo}</Text>
+              ) : null}
+              <Text style={styles.label}>
+                {t("inventory.detail.transferQuantity", { unit: item.unit })}
+              </Text>
+              <TextInput
+                accessibilityLabel={t("inventory.detail.transferQuantity", { unit: item.unit })}
+                value={transferQuantity}
+                onChangeText={(value) => {
+                  setTransferQuantity(value);
+                  setTransferErrors((current) => ({ ...current, transferQuantity: undefined }));
+                }}
+                editable={transferEditable}
+                keyboardType="decimal-pad"
+                style={[styles.input, transferErrors.transferQuantity && styles.inputError]}
+              />
+              {transferErrors.transferQuantity ? (
+                <Text style={styles.fieldError}>{transferErrors.transferQuantity}</Text>
+              ) : null}
+              <Text style={styles.label}>{t("inventory.detail.transferNote")}</Text>
+              <TextInput
+                accessibilityLabel={t("inventory.detail.transferNote")}
+                value={transferNote}
+                onChangeText={(value) => {
+                  setTransferNote(value);
+                  setTransferErrors((current) => ({ ...current, transferNote: undefined }));
+                }}
+                editable={transferEditable}
+                multiline
+                style={[styles.input, styles.noteInput, transferErrors.transferNote && styles.inputError]}
+              />
+              {transferErrors.transferNote ? (
+                <Text style={styles.fieldError}>{transferErrors.transferNote}</Text>
+              ) : null}
+              <Button
+                title={
+                  submittingTransfer
+                    ? t("inventory.detail.transferring")
+                    : t("inventory.detail.transferAction")
+                }
+                onPress={() => void submitTransfer()}
+                disabled={!transferEditable || !canonicalReady}
+                fullWidth
+                style={styles.addButton}
+              />
+              {canManageLocations ? (
+                <View style={styles.locationCreate}>
+                  <Text style={styles.label}>{t("inventory.detail.newLocation")}</Text>
+                  <TextInput
+                    accessibilityLabel={t("inventory.detail.newLocation")}
+                    value={newLocationName}
+                    onChangeText={(value) => {
+                      setNewLocationName(value);
+                      setTransferErrors((current) => ({ ...current, newLocation: undefined }));
+                    }}
+                    editable={!addingLocation}
+                    style={[styles.input, transferErrors.newLocation && styles.inputError]}
+                  />
+                  {transferErrors.newLocation ? (
+                    <Text style={styles.fieldError}>{transferErrors.newLocation}</Text>
+                  ) : null}
+                  <Button
+                    title={
+                      addingLocation
+                        ? t("inventory.detail.addingLocation")
+                        : t("inventory.detail.addLocation")
+                    }
+                    variant="secondary"
+                    onPress={() => void addLocation()}
+                    disabled={addingLocation || !hubReady}
+                    fullWidth
+                  />
+                </View>
+              ) : null}
+            </Card>
+          ) : null}
 
           <Card>
             <Text style={styles.cardTitle}>{t("inventory.detail.recentUsage")}</Text>
@@ -698,6 +1012,35 @@ interface InventorySettingErrors {
   reorderThreshold?: string;
 }
 
+
+type TransferFieldErrors = {
+  transferQuantity?: string;
+  transferFrom?: string;
+  transferTo?: string;
+  transferNote?: string;
+  newLocation?: string;
+};
+
+function validateTransferQuantity(
+  value: string,
+  parseNumber: ReturnType<typeof useLocale>["parseNumber"],
+  formatNumber: ReturnType<typeof useLocale>["formatNumber"],
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  const parsed = parseNumber(value);
+  if (parsed === null || !Number.isFinite(parsed) || parsed <= 0) {
+    return t("inventory.ops.quantityPositive", {
+      maximum: formatNumber(operatingLimits.inventoryQuantity)
+    });
+  }
+  if (parsed > operatingLimits.inventoryQuantity) {
+    return t("inventory.ops.quantityPositive", {
+      maximum: formatNumber(operatingLimits.inventoryQuantity)
+    });
+  }
+  return undefined;
+}
+
 function isCanonicalUnitReady(item: InventoryItem) {
   return (
     item.canonical_unit_verification_status === "verified" &&
@@ -857,6 +1200,18 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: "700",
     marginTop: 5
+  },
+  balanceList: {
+    gap: 4,
+    marginBottom: 8
+  },
+  locationCreate: {
+    gap: 8,
+    marginTop: 12
+  },
+  noteInput: {
+    minHeight: 72,
+    textAlignVertical: "top"
   },
   addButton: { marginTop: 14 },
   field: { marginBottom: 14 },
