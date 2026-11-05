@@ -48,6 +48,7 @@ function delivery(
     status,
     received_at: receivedAt,
     notes: null,
+    document_reference: null,
     created_at: receivedAt
   };
 }

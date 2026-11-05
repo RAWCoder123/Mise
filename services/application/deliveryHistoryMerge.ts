@@ -11,6 +11,8 @@ export interface DeliveryHistoryEntry {
   effectiveAt: string;
   recordedAt: string | null;
   note: string | null;
+  /** Optional invoice / PO identity from ledger source_reference on ad-hoc receipts. */
+  documentReference: string | null;
   /** True when the receipt is still pending outbox sync. */
   syncing: boolean;
 }
@@ -19,6 +21,17 @@ function noteFromMetadata(metadata: Readonly<Record<string, unknown>> | undefine
   if (!metadata) return null;
   const note = metadata.note;
   return typeof note === "string" && note.trim() ? note.trim() : null;
+}
+
+function documentReferenceFromEvent(event: {
+  sourceReference: string | null;
+  source?: string | null;
+}): string | null {
+  // Order receives use the delivery UUID as source_reference for idempotency.
+  // Only surface operator-entered document identity from ad-hoc operator receipts.
+  if (event.source !== "operator_receipt") return null;
+  const reference = event.sourceReference?.trim();
+  return reference ? reference : null;
 }
 
 function sortByEffectiveAtDesc(left: DeliveryHistoryEntry, right: DeliveryHistoryEntry) {
@@ -51,6 +64,7 @@ export function mergeDeliveryHistoryEntries(input: {
       effectiveAt: event.effectiveAt,
       recordedAt: event.recordedAt,
       note: noteFromMetadata(event.metadata),
+      documentReference: documentReferenceFromEvent(event),
       syncing: false
     }));
 
@@ -73,6 +87,7 @@ export function mergeDeliveryHistoryEntries(input: {
       effectiveAt: entry.event.effectiveAt,
       recordedAt: null,
       note: noteFromMetadata(entry.event.metadata),
+      documentReference: documentReferenceFromEvent(entry.event),
       syncing: true
     }));
 

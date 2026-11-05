@@ -30,12 +30,16 @@ import {
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
+import { normalizeOptionalDocumentReference } from "../../services/domain/supplierDelivery";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
-import { operatingLimits } from "../../services/miseValidation";
+import {
+  operatingLimits,
+  SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS
+} from "../../services/miseValidation";
 import type { InventoryItem, InventoryOutlookItem } from "../../types/mise";
 import { statusTone } from "../../utils/inventory";
 
@@ -50,6 +54,7 @@ export default function InventoryDetailScreen() {
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
   const [operation, setOperation] = useState<InventoryOperatorAction>("count");
   const [quantityText, setQuantityText] = useState("");
+  const [documentReferenceText, setDocumentReferenceText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
@@ -228,6 +233,23 @@ export default function InventoryDetailScreen() {
     setMessage(null);
     setMessageIsError(false);
     try {
+      let documentReference: string | undefined;
+      if (operation === "receipt") {
+        try {
+          documentReference =
+            normalizeOptionalDocumentReference(documentReferenceText) ?? undefined;
+        } catch (referenceError) {
+          setMessage(
+            referenceError instanceof Error && referenceError.message.trim()
+              ? referenceError.message.slice(0, 220)
+              : t("inventory.ops.documentReferenceError")
+          );
+          setMessageIsError(true);
+          setSubmittingOperation(false);
+          return;
+        }
+      }
+
       await queueInventoryOperation({
         restaurantId,
         inventoryItemId: item.id,
@@ -235,6 +257,7 @@ export default function InventoryDetailScreen() {
         quantity,
         canonicalUnit: item.canonical_unit,
         effectiveAt: new Date().toISOString(),
+        sourceReference: documentReference,
         note: noteText.trim() || undefined
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
@@ -246,6 +269,7 @@ export default function InventoryDetailScreen() {
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
       setQuantityText(operation === "stockout" ? "0" : "");
+      setDocumentReferenceText("");
       setNoteText("");
       setMessage(describeFlushResult(flushSummary, t));
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
@@ -512,6 +536,7 @@ export default function InventoryDetailScreen() {
                       onValueChange={(value) => {
                         setOperation(value);
                         setQuantityError(undefined);
+                        setDocumentReferenceText("");
                         if (value === "stockout") setQuantityText("0");
                       }}
                     />
@@ -535,6 +560,19 @@ export default function InventoryDetailScreen() {
                         error={quantityError}
                       />
                     )}
+                    {operation === "receipt" ? (
+                      <Field
+                        label={t("inventory.ops.documentReference")}
+                        value={documentReferenceText}
+                        onChangeText={setDocumentReferenceText}
+                        editable={actionsEditable && !busy}
+                        keyboardType="default"
+                        placeholder={t("inventory.ops.documentReferencePlaceholder")}
+                        maxLength={SUPPLIER_DELIVERY_DOCUMENT_REFERENCE_MAX_CHARACTERS}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                      />
+                    ) : null}
                     <Field
                       label={t("inventory.ops.note")}
                       value={noteText}
@@ -661,7 +699,11 @@ function Field({
   onChangeText,
   editable,
   error,
-  keyboardType = "decimal-pad"
+  keyboardType = "decimal-pad",
+  placeholder,
+  maxLength,
+  autoCapitalize,
+  autoCorrect
 }: {
   label: string;
   value: string;
@@ -669,6 +711,10 @@ function Field({
   editable: boolean;
   error?: string;
   keyboardType?: "decimal-pad" | "default";
+  placeholder?: string;
+  maxLength?: number;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  autoCorrect?: boolean;
 }) {
   return (
     <View style={styles.field}>
@@ -682,6 +728,11 @@ function Field({
         editable={editable}
         keyboardType={keyboardType}
         selectTextOnFocus={keyboardType === "decimal-pad"}
+        placeholder={placeholder}
+        placeholderTextColor={colors.faint}
+        maxLength={maxLength}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
         style={[styles.input, !editable && styles.inputReadOnly, error && styles.inputError]}
       />
       {error ? (
