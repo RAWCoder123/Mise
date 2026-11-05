@@ -23,6 +23,7 @@ import type {
   Supplier,
   SupplierEmailPayload,
   SupplierOrder,
+  SupplierOrderLine,
   SupplierRecipient,
   SupplierSendContentVersion
 } from "../../types/mise";
@@ -421,6 +422,7 @@ export const RESTAURANT_EXPORT_DATASETS = [
   "purchase_decision_events",
   "purchase_lines",
   "supplier_orders",
+  "supplier_order_lines",
   "pos_integrations",
   "sales_imports",
   "insights",
@@ -699,6 +701,11 @@ export interface MiseRepository {
   fetchPurchaseLineNetByItem(restaurantId: string): Promise<PurchaseLineNetByItem[]>;
   replacePendingRecommendations(restaurantId: string, inserts: PurchaseRecommendationInput[]): Promise<void>;
   fetchSupplierOrders(restaurantId: string): Promise<SupplierOrder[]>;
+  /**
+   * Durable structured lines for one supplier order. Empty when the draft has
+   * not yet been dual-written (pre-migration history should be backfilled).
+   */
+  fetchSupplierOrderLines(restaurantId: string, orderId: string): Promise<SupplierOrderLine[]>;
   /**
    * Bounded, newest-first receipt evidence used for supplier reliability.
    * Every returned delivery and line must belong to the requested restaurant.

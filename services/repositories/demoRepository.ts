@@ -146,6 +146,7 @@ import {
   normalizeSupplier,
   normalizeSupplierItem,
   normalizeSupplierOrder,
+  normalizeSupplierOrderLine,
   normalizeSupplierDeliveryItemRecord,
   normalizeSupplierDeliveryRecord,
   normalizeSupplierRecipient
@@ -675,6 +676,7 @@ function buildDemoRestaurantExport(state: DemoState, restaurantId: string) {
       created_at: event.createdAt
     }));
   datasets.supplier_orders = tenantRows(state.supplierOrders);
+  datasets.supplier_order_lines = tenantRows(state.supplierOrderLines ?? []);
   datasets.pos_integrations = tenantRows(state.posIntegrations);
   datasets.sales_imports = tenantRows(state.salesImports);
   datasets.insights = tenantRows(state.insights);
@@ -2562,6 +2564,20 @@ export function createLocalDemoRepository(): MiseRepository {
         .filter((order) => order.restaurant_id === restaurantId)
         .map(normalizeSupplierOrder)
         .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    },
+
+    async fetchSupplierOrderLines(restaurantId, orderId) {
+      const state = await readDemoState();
+      return (state.supplierOrderLines ?? [])
+        .filter(
+          (line) =>
+            line.restaurant_id === restaurantId && line.supplier_order_id === orderId
+        )
+        .map(normalizeSupplierOrderLine)
+        .sort(
+          (left, right) =>
+            left.line_position - right.line_position || left.id.localeCompare(right.id)
+        );
     },
 
     async fetchSupplierDeliveryHistory(restaurantId) {

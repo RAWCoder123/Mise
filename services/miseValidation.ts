@@ -30,6 +30,7 @@ import type {
   SupplierEmailPayload,
   SupplierItem,
   SupplierOrder,
+  SupplierOrderLine,
   SupplierRecipient,
   SupplierSendContentBlockerCode,
   SupplierSendContentLine
@@ -1203,6 +1204,32 @@ export function normalizeSupplierOrder(value: SupplierOrder): SupplierOrder {
     supplier_id: requireSupplierAuthorityId(value.supplier_id),
     supplier_name: requireSupplierDisplaySnapshot(value.supplier_name),
     delivery_date: asNullableString(value.delivery_date)
+  };
+}
+
+export function normalizeSupplierOrderLine(value: SupplierOrderLine): SupplierOrderLine {
+  const canonical =
+    value.canonical_unit === "g" ||
+    value.canonical_unit === "ml" ||
+    value.canonical_unit === "each"
+      ? value.canonical_unit
+      : null;
+  const orderedQuantity = asNumber(value.ordered_quantity);
+  return {
+    ...value,
+    purchase_recommendation_id: asNullableString(value.purchase_recommendation_id),
+    item_name: asString(value.item_name),
+    ordered_quantity:
+      Number.isFinite(orderedQuantity) && orderedQuantity > 0
+        ? Math.min(orderedQuantity, operatingLimits.recommendationQuantity)
+        : 0,
+    unit: asString(value.unit),
+    canonical_unit: canonical,
+    estimated_unit_cost:
+      value.estimated_unit_cost == null ? null : asNonNegativeNumber(value.estimated_unit_cost),
+    line_position: Math.max(0, Math.floor(asNonNegativeNumber(value.line_position))),
+    created_at: asString(value.created_at),
+    updated_at: asString(value.updated_at, value.created_at)
   };
 }
 
