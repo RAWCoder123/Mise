@@ -1245,6 +1245,15 @@ export interface SupplierOrderSentWorkflowResult {
   orderedRecommendations: PurchaseRecommendation[];
 }
 
+export interface CancelSupplierOrderDraftResult {
+  outcome: "applied";
+  orderId: string;
+  supplierId: string;
+  supplierName: string;
+  restoredCount: number;
+  restoredRecommendationIds: string[];
+}
+
 export function buildOrderQueueSummary(
   restaurantId: string,
   recommendations: PurchaseRecommendation[],

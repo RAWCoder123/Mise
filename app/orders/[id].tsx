@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { ArrowLeft, CheckCircle2, Copy, FileText, Save, Send } from "lucide-react-native";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
@@ -14,6 +14,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
 import {
+  cancelSupplierOrderDraft,
   fetchEmailConnectionState,
   fetchSupplierSendAction,
   fetchSupplierOrderOperationalDetail,
@@ -244,6 +245,55 @@ export default function OrderDraftDetailScreen() {
         setNotice({
           title: t("orders.detail.notice.copyFailedTitle"),
           message: t("orders.detail.notice.copyFailedBody"),
+          tone: "danger"
+        });
+      }
+    } finally {
+      actionLockRef.current = false;
+      if (activeRestaurantIdRef.current === restaurantId) setBusy(false);
+    }
+  }
+
+  function confirmCancelDraft() {
+    if (!restaurant || !order || order.status !== "draft" || actionLockRef.current) return;
+    if (!actionsEditable) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    Alert.alert(
+      t("orders.detail.cancel.title"),
+      t("orders.detail.cancel.body", { supplier: order.supplier_name }),
+      [
+        { text: t("orders.detail.cancel.keep"), style: "cancel" },
+        {
+          text: t("orders.detail.cancel.confirm"),
+          style: "destructive",
+          onPress: () => void cancelDraft()
+        }
+      ]
+    );
+  }
+
+  async function cancelDraft() {
+    if (!restaurant || !order || order.status !== "draft" || actionLockRef.current) return;
+    if (!actionsEditable) {
+      setNotice(viewOnlyNotice(t));
+      return;
+    }
+    const restaurantId = restaurant.id;
+    actionLockRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    try {
+      await cancelSupplierOrderDraft(restaurantId, order.id);
+      if (activeRestaurantIdRef.current !== restaurantId) return;
+      if (navigation.canGoBack()) navigation.goBack();
+      else router.replace("/orders");
+    } catch {
+      if (activeRestaurantIdRef.current === restaurantId) {
+        setNotice({
+          title: t("orders.detail.cancel.failedTitle"),
+          message: t("orders.detail.cancel.failedBody"),
           tone: "danger"
         });
       }
@@ -746,6 +796,18 @@ export default function OrderDraftDetailScreen() {
                 variant="secondary"
                 icon={<Save size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => void saveNote()}
+                disabled={busy}
+                style={styles.actionButton}
+              />
+            ) : null}
+            {canEditDraft ? (
+              <Button
+                title={busy ? t("orders.detail.cancel.busy") : t("orders.detail.cancel.action")}
+                accessibilityLabel={t("orders.detail.cancel.accessibility", {
+                  supplier: visibleOrder.supplier_name
+                })}
+                variant="danger"
+                onPress={confirmCancelDraft}
                 disabled={busy}
                 style={styles.actionButton}
               />
