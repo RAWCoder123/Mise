@@ -53,6 +53,8 @@ export default function InventoryDetailScreen() {
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
+  const [leadTimeDays, setLeadTimeDays] = useState("");
+  const [minimumOrderQuantity, setMinimumOrderQuantity] = useState("");
   const [quantityError, setQuantityError] = useState<string | undefined>();
   const [settingErrors, setSettingErrors] = useState<InventorySettingErrors>({});
   const [savingSettings, setSavingSettings] = useState(false);
@@ -100,6 +102,18 @@ export default function InventoryDetailScreen() {
             useGrouping: false
           })
         );
+        setLeadTimeDays(
+          formatNumber(nextOutlook.item.lead_time_days ?? 0, {
+            maximumFractionDigits: 0,
+            useGrouping: false
+          })
+        );
+        setMinimumOrderQuantity(
+          formatNumber(nextOutlook.item.minimum_order_quantity ?? 0, {
+            maximumFractionDigits: 2,
+            useGrouping: false
+          })
+        );
         setSettingErrors({});
       }
     } catch {
@@ -127,6 +141,8 @@ export default function InventoryDetailScreen() {
     setNoteText("");
     setParLevel("");
     setReorderThreshold("");
+    setLeadTimeDays("");
+    setMinimumOrderQuantity("");
     setQuantityError(undefined);
     setSettingErrors({});
     setSavingSettings(false);
@@ -284,6 +300,14 @@ export default function InventoryDetailScreen() {
         parseNumber,
         formatNumber,
         t
+      ),
+      leadTimeDays: validateLeadTimeDays(leadTimeDays, parseNumber, t),
+      minimumOrderQuantity: validateInventoryNumber(
+        minimumOrderQuantity,
+        t("inventory.detail.field.minimumOrderQuantity"),
+        parseNumber,
+        formatNumber,
+        t
       )
     };
     if (Object.values(nextSettingErrors).some(Boolean)) {
@@ -301,7 +325,9 @@ export default function InventoryDetailScreen() {
     try {
       await updateInventoryItem(restaurantId, item.id, {
         par_level: parseNumber(parLevel) ?? 0,
-        reorder_threshold: parseNumber(reorderThreshold) ?? 0
+        reorder_threshold: parseNumber(reorderThreshold) ?? 0,
+        lead_time_days: Math.floor(parseNumber(leadTimeDays) ?? 0),
+        minimum_order_quantity: parseNumber(minimumOrderQuantity) ?? 0
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
       await load();
@@ -595,6 +621,26 @@ export default function InventoryDetailScreen() {
               editable={actionsEditable && !busy}
               error={settingErrors.reorderThreshold}
             />
+            <Field
+              label={t("inventory.detail.leadTimeDays")}
+              value={leadTimeDays}
+              onChangeText={(value) => {
+                setLeadTimeDays(value);
+                setSettingErrors((current) => ({ ...current, leadTimeDays: undefined }));
+              }}
+              editable={actionsEditable && !busy}
+              error={settingErrors.leadTimeDays}
+            />
+            <Field
+              label={t("inventory.detail.minimumOrderQuantity", { unit: item.unit })}
+              value={minimumOrderQuantity}
+              onChangeText={(value) => {
+                setMinimumOrderQuantity(value);
+                setSettingErrors((current) => ({ ...current, minimumOrderQuantity: undefined }));
+              }}
+              editable={actionsEditable && !busy}
+              error={settingErrors.minimumOrderQuantity}
+            />
             {mutationAllowed ? (
               <Button
                 title={savingSettings ? t("inventory.detail.saving") : t("inventory.detail.saveSettings")}
@@ -696,6 +742,8 @@ function Field({
 interface InventorySettingErrors {
   parLevel?: string;
   reorderThreshold?: string;
+  leadTimeDays?: string;
+  minimumOrderQuantity?: string;
 }
 
 function isCanonicalUnitReady(item: InventoryItem) {
@@ -781,6 +829,20 @@ function validateInventoryNumber(
       field: label,
       maximum: formatNumber(operatingLimits.inventoryQuantity)
     });
+  }
+  return undefined;
+}
+
+function validateLeadTimeDays(
+  value: string,
+  parseNumber: ReturnType<typeof useLocale>["parseNumber"],
+  t: ReturnType<typeof useLocale>["t"]
+) {
+  const label = t("inventory.detail.field.leadTimeDays");
+  if (!value.trim()) return t("inventory.detail.fieldRequired", { field: label });
+  const parsed = parseNumber(value);
+  if (parsed === null || !Number.isFinite(parsed) || parsed < 0 || parsed > 365 || !Number.isInteger(parsed)) {
+    return t("inventory.detail.leadTimeDaysRange");
   }
   return undefined;
 }

@@ -205,6 +205,11 @@ function optionalBoundedText(value: unknown, label: string, maximum: number) {
   return normalized;
 }
 
+function asBoundedNonNegativeInteger(value: unknown, maximum: number, fallback = 0) {
+  const numeric = asBoundedNonNegativeNumber(value, maximum, fallback);
+  return Math.min(maximum, Math.floor(numeric));
+}
+
 function asBoundedNonNegativeNumber(value: unknown, maximum: number, fallback = 0) {
   const parsed = asNumber(value, fallback);
   if (parsed <= 0) return 0;
@@ -365,6 +370,11 @@ export function normalizeInventoryItem(value: InventoryItem): InventoryItem {
     current_quantity: asBoundedNonNegativeNumber(value.current_quantity, operatingLimits.inventoryQuantity),
     par_level: asBoundedNonNegativeNumber(value.par_level, operatingLimits.inventoryQuantity),
     reorder_threshold: asBoundedNonNegativeNumber(value.reorder_threshold, operatingLimits.inventoryQuantity),
+    lead_time_days: asBoundedNonNegativeInteger(value.lead_time_days, 365),
+    minimum_order_quantity: asBoundedNonNegativeNumber(
+      value.minimum_order_quantity,
+      operatingLimits.inventoryQuantity
+    ),
     estimated_unit_cost: asNonNegativeNumber(value.estimated_unit_cost),
     canonical_unit: canonicalUnit,
     canonical_quantity_per_unit: canonicalQuantityPerUnit,
@@ -436,7 +446,8 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
   const validated: InventoryItemPatch = { ...patch };
   for (const [field, label] of [
     ["par_level", "Par level"],
-    ["reorder_threshold", "Reorder threshold"]
+    ["reorder_threshold", "Reorder threshold"],
+    ["minimum_order_quantity", "Minimum order quantity"]
   ] as const) {
     const value = validated[field];
     if (value === undefined) continue;
@@ -449,6 +460,16 @@ export function requireInventoryItemPatch(patch: InventoryItemPatch): InventoryI
       throw new Error(
         `${label} must be between 0 and ${operatingLimits.inventoryQuantity.toLocaleString()}.`
       );
+    }
+  }
+  if (validated.lead_time_days !== undefined) {
+    if (
+      typeof validated.lead_time_days !== "number" ||
+      !Number.isSafeInteger(validated.lead_time_days) ||
+      validated.lead_time_days < 0 ||
+      validated.lead_time_days > 365
+    ) {
+      throw new Error("Lead time must be a whole number of days between 0 and 365.");
     }
   }
   return validated;
@@ -1191,6 +1212,15 @@ export function normalizeInventoryItemPatch(patch: InventoryItemPatch): Inventor
   if (normalized.reorder_threshold !== undefined) {
     normalized.reorder_threshold = asBoundedNonNegativeNumber(
       normalized.reorder_threshold,
+      operatingLimits.inventoryQuantity
+    );
+  }
+  if (normalized.lead_time_days !== undefined) {
+    normalized.lead_time_days = asBoundedNonNegativeInteger(normalized.lead_time_days, 365);
+  }
+  if (normalized.minimum_order_quantity !== undefined) {
+    normalized.minimum_order_quantity = asBoundedNonNegativeNumber(
+      normalized.minimum_order_quantity,
       operatingLimits.inventoryQuantity
     );
   }
