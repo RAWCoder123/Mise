@@ -15,6 +15,11 @@ import {
   saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity.ts";
+import {
+  roundOrderQuantityToPack,
+  verifiedPackMapFromSnapshotEntries,
+  type VerifiedSupplierPack
+} from "./supplierPackQuantity.ts";
 
 export interface OperationalInventoryItem {
   id: string;
@@ -107,6 +112,11 @@ export interface OperationalPlanningSnapshot {
   ledgerComplete?: boolean;
   /** Restaurant timezone, used to place a count inside the correct operating day. */
   timeZone?: string | null;
+  /**
+   * Verified supplier pack sizes keyed by inventory item. Recommendation
+   * quantities round up to these packs when present.
+   */
+  verifiedSupplierPacks?: readonly VerifiedSupplierPack[];
 }
 
 export function calculateOperationalSignals(snapshot: OperationalPlanningSnapshot) {
@@ -123,6 +133,7 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       : undefined
   });
   const providerMappings = snapshot.providerMappings ?? [];
+  const verifiedPacks = verifiedPackMapFromSnapshotEntries(snapshot.verifiedSupplierPacks);
   const demand = historicalDailyDemand(
     snapshot.sales,
     snapshot.operatingDate,
@@ -173,7 +184,11 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const threshold = finiteNonNegative(item.reorder_threshold);
     const isCritical = projectedQuantity <= 0;
     const isLow = !isCritical && projectedQuantity <= threshold;
-    const suggested = Math.max(1, Math.ceil(finiteNonNegative(item.par_level) - projectedQuantity));
+    const packQuantity = verifiedPacks.get(item.id) ?? null;
+    const suggested = roundOrderQuantityToPack(
+      finiteNonNegative(item.par_level) - projectedQuantity,
+      packQuantity
+    );
     const recentHandled = handled.get(item.id);
     // Only a newer verified physical count releases a handled recommendation;
     // policy, cost, supplier, and metadata edits never do.
@@ -185,7 +200,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       const learnedQuantity = boundedLearnedQuantity(
         learned.get(`${item.id}\u001f${canonicalInventoryUnit(item.unit)}`),
         suggested,
-        item.par_level
+        item.par_level,
+        packQuantity
       );
       const quantity = learnedQuantity ?? suggested;
       const coverage = baselineUsage > 0 ? projectedQuantity / baselineUsage : null;
@@ -351,7 +367,8 @@ export function buildRecommendationInserts(
     ledgerComplete?: boolean;
     timeZone?: string | null;
   } = {},
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  verifiedSupplierPacks: readonly VerifiedSupplierPack[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -363,7 +380,8 @@ export function buildRecommendationInserts(
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone,
-    providerMappings
+    providerMappings,
+    verifiedSupplierPacks
   }).recommendations;
 }
 
@@ -378,7 +396,8 @@ export function buildInsightsFromData(
     ledgerComplete?: boolean;
     timeZone?: string | null;
   } = {},
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  verifiedSupplierPacks: readonly VerifiedSupplierPack[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -390,7 +409,8 @@ export function buildInsightsFromData(
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone,
-    providerMappings
+    providerMappings,
+    verifiedSupplierPacks
   }).insights;
 }
 
@@ -461,11 +481,17 @@ function learnedQuantities(history: OperationalRecommendationHistory[]) {
   return result;
 }
 
-function boundedLearnedQuantity(learned: number | undefined, calculated: number, par: number) {
+function boundedLearnedQuantity(
+  learned: number | undefined,
+  calculated: number,
+  par: number,
+  packQuantity: number | null = null
+) {
   if (!learned || !Number.isFinite(learned)) return undefined;
   const minimum = Math.max(1, calculated * 0.5);
   const maximum = Math.max(calculated * 1.75, par * 1.25, 1);
-  return learned >= minimum && learned <= maximum ? Math.max(1, Math.ceil(learned)) : undefined;
+  if (learned < minimum || learned > maximum) return undefined;
+  return roundOrderQuantityToPack(learned, packQuantity);
 }
 
 function dedupeInsights(insights: OperationalInsight[]) {
