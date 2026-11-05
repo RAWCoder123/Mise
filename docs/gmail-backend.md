@@ -36,7 +36,10 @@ Mise requests `openid`, `email`, and only the Gmail `gmail.send` authorization s
 - A successful provider response returns `{ status: "sent", outcome, providerMessageId, order, orderedRecommendations }`.
 - `gmail_not_connected`, `needs_reauth`, and missing/invalid supplier-recipient states are actionable conflicts.
 - `delivery_requires_review` means the provider outcome was ambiguous. Mise does not automatically retry that order, preventing duplicate supplier email.
-- The order becomes `sent`, linked recommendations become `ordered`, the provider message ID is persisted, and audit evidence is created in one database transaction only after Gmail accepts the message.
+- Managers can inspect the bounded review state with `get_supplier_email_delivery_review` and resolve it with `resolve_supplier_email_delivery`:
+  - `confirm_sent` records the order as sent after explicit confirmation (optional provider message id, otherwise a manager attestation id).
+  - `allow_retry` marks the ambiguous claim failed and returns the send action to a re-approvable failed state so one deliberate resend can proceed after envelope review.
+- The order becomes `sent`, linked recommendations become `ordered`, the provider message ID is persisted, and audit evidence is created in one database transaction only after Gmail accepts the message, or after a manager confirms an ambiguous outcome.
 
 The database rejects direct hosted calls that try to mark a supplier order sent before provider acceptance. Local demo workflows remain independent of Google credentials.
 
