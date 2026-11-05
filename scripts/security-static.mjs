@@ -49,6 +49,8 @@ const sensitiveClientReadableColumns = [
   "service_role"
 ];
 
+// Keep in lockstep with scripts/security-backend.mjs `restaurantOwnedTables`.
+// tests/security.test.ts fails closed if either gate drifts.
 const restaurantOwnedTables = new Set([
   "pos_sales",
   "inventory_items",
@@ -65,6 +67,15 @@ const restaurantOwnedTables = new Set([
   "restaurant_email_connections",
   "supplier_recipients",
   "setup_attachments",
+  "restaurant_operational_controls",
+  "pos_locations",
+  "menu_items",
+  "pos_catalog_item_mappings",
+  "recipe_versions",
+  "recipe_ingredients",
+  "modifier_recipe_adjustments",
+  "ingredient_substitutions",
+  "inventory_events",
   "operational_issues",
   "mise_actions",
   "action_outcomes",
@@ -75,7 +86,11 @@ const restaurantOwnedTables = new Set([
   "activity_events",
   "supplier_order_confirmations",
   "supplier_deliveries",
-  "supplier_delivery_items"
+  "supplier_delivery_items",
+  "recalculation_runs",
+  "inventory_count_sessions",
+  "inventory_count_lines",
+  "purchase_lines"
 ]);
 
 const serviceOnlyPublicTables = new Set([

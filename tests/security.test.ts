@@ -668,6 +668,30 @@ test("Expo release config uses the supported splash plugin and mobile QA discove
   assert.match(mobileQa, /install Chrome\/Chromium before running mobile QA/);
 });
 
+function restaurantOwnedTablesFromGate(script: string): string[] {
+  const block = script.match(/const restaurantOwnedTables = new Set\(\[([\s\S]*?)\]\)/)?.[1] ?? "";
+  return [...block.matchAll(/"([a-z_]+)"/g)].map((match) => match[1]!).sort();
+}
+
+test("static and backend security gates share one restaurant-owned table inventory", () => {
+  const staticGate = readFileSync("scripts/security-static.mjs", "utf8");
+  const backendGate = readFileSync("scripts/security-backend.mjs", "utf8");
+  const staticOwned = restaurantOwnedTablesFromGate(staticGate);
+  const backendOwned = restaurantOwnedTablesFromGate(backendGate);
+
+  assert.ok(staticOwned.includes("purchase_lines"), "purchase_lines must be tenant-scoped in the static gate");
+  assert.ok(staticOwned.includes("inventory_events"), "inventory_events must be tenant-scoped in the static gate");
+  assert.ok(
+    staticOwned.includes("inventory_count_sessions"),
+    "inventory_count_sessions must be tenant-scoped in the static gate"
+  );
+  assert.deepEqual(
+    staticOwned,
+    backendOwned,
+    "security-static restaurantOwnedTables must match security-backend exactly"
+  );
+});
+
 test("backend security script proves local RLS, Data API grants, and firewall guards", () => {
   const script = readFileSync("scripts/security-backend.mjs", "utf8");
 
