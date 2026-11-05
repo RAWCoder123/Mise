@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const migration = readFileSync(
-  "supabase/migrations/20260824034152_mise_003c_durable_supplier_identity.sql",
+  "supabase/migrations/20261105170000_inventory_lead_time_and_moq.sql",
   "utf8"
 );
 const tenantIsolation = readFileSync(
@@ -26,17 +26,17 @@ test("service inventory update rejects current_quantity and only writes policy f
   );
   assert.match(
     migration,
-    /safe_patch\s*-\s*array\['par_level',\s*'reorder_threshold'\]/i
+    /safe_patch\s*-\s*array\[\s*'par_level',\s*'reorder_threshold',\s*'lead_time_days',\s*'minimum_order_quantity'\s*\]/i
   );
   assert.match(
     migration,
-    /set\s+par_level\s*=\s*item_row\.par_level[\s\S]*reorder_threshold\s*=\s*item_row\.reorder_threshold/i
+    /set\s+par_level\s*=\s*item_row\.par_level[\s\S]*reorder_threshold\s*=\s*item_row\.reorder_threshold[\s\S]*lead_time_days\s*=\s*item_row\.lead_time_days[\s\S]*minimum_order_quantity\s*=\s*item_row\.minimum_order_quantity/i
   );
   assert.doesNotMatch(migration, /set\s+current_quantity\s*=\s*item_row\.current_quantity/i);
   assert.doesNotMatch(migration, /safe_patch\s*-\s*array\[[^\]]*'supplier_name'/i);
   assert.match(
     edgeWorkflow,
-    /new Set\(\["par_level", "reorder_threshold"\]\)/i
+    /new Set\(\[\s*"par_level",\s*"reorder_threshold",\s*"lead_time_days",\s*"minimum_order_quantity"\s*\]\)/i
   );
 });
 

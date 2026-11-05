@@ -35,6 +35,12 @@ import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/i
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
 import {
+  applyMinimumOrderQuantity,
+  coverageWithinLeadTime,
+  normalizeLeadTimeDays,
+  normalizeMinimumOrderQuantity
+} from "./inventoryOrderPolicy";
+import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
   verifiedCountSupersedes,
@@ -423,7 +429,9 @@ export function buildInventoryPrediction(
     ...item,
     current_quantity: finiteNonNegative(item.current_quantity),
     par_level: finiteNonNegative(item.par_level),
-    reorder_threshold: finiteNonNegative(item.reorder_threshold)
+    reorder_threshold: finiteNonNegative(item.reorder_threshold),
+    lead_time_days: normalizeLeadTimeDays(item.lead_time_days),
+    minimum_order_quantity: normalizeMinimumOrderQuantity(item.minimum_order_quantity)
   };
   const todaySales = sales.filter(
     (sale) => sale.restaurant_id === item.restaurant_id && isToday(sale, operatingDate)
@@ -472,14 +480,24 @@ export function buildInventoryPrediction(
   const projectedQuantity = Math.max(0, safeItem.current_quantity - recentUsage);
   const daysCoverage = averageDailyUsage > 0 ? projectedQuantity / averageDailyUsage : null;
   const quantityStatus = getInventoryStatusForQuantity(safeItem, projectedQuantity);
-  const computedStatus = statusWithCoverageRisk(quantityStatus, daysCoverage, projectedQuantity);
+  const leadTimeRisk = coverageWithinLeadTime(daysCoverage, safeItem.lead_time_days ?? 0);
+  const coverageStatus = statusWithCoverageRisk(quantityStatus, daysCoverage, projectedQuantity);
+  // Lead-time risk elevates Good/Watch into Low so operators see an actionable reorder
+  // before coverage falls through the supplier delivery window.
+  const computedStatus: InventoryStatus =
+    leadTimeRisk && (coverageStatus === "Good" || coverageStatus === "Watch")
+      ? "Low"
+      : coverageStatus;
   // `current_quantity` was last overwritten by an invalid future-dated count, so the
   // number cannot support a confident Good/Low/Critical claim. Watch is the existing
   // "counts need a look" state, which is the only honest read until a real recount.
   const contaminatedProjection = countEvidence.status === "contaminated";
   const projectedStatus: InventoryStatus = contaminatedProjection ? "Watch" : computedStatus;
   const demandTrend = getDemandTrend(mappedTodayUsage, baselineUsage);
-  const suggestedOrderQuantity = roundOrderQuantity(safeItem.par_level - projectedQuantity);
+  const suggestedOrderQuantity = applyMinimumOrderQuantity(
+    roundOrderQuantity(safeItem.par_level - projectedQuantity),
+    safeItem.minimum_order_quantity ?? 0
+  );
   const coverageLabel = getCoverageLabel(safeItem, daysCoverage, averageDailyUsage, projectedQuantity);
   const trendLabel = getTrendLabel(demandTrend);
   const suggestedAction = getSuggestedAction(safeItem, suggestedOrderQuantity, daysCoverage, projectedStatus);
@@ -596,6 +614,12 @@ function getCoverageLabel(
   if (projectedQuantity > item.par_level * 1.35 || daysCoverage >= 8) return "Unusually high stock";
   if (daysCoverage <= 0.75) return "May run out today";
   if (daysCoverage <= 1.5) return "May run low tomorrow";
+  const leadTimeDays = normalizeLeadTimeDays(item.lead_time_days);
+  // Lead-time copy only after acute stockout labels, so a zero-coverage item still
+  // reads as "run out today" rather than a softer delivery-window warning.
+  if (leadTimeDays > 0 && daysCoverage <= leadTimeDays) {
+    return `May not cover ${leadTimeDays}-day supplier lead time`;
+  }
   if (daysCoverage <= 3) return `Likely enough for ${Math.max(2, Math.ceil(daysCoverage))} days`;
   if (daysCoverage >= 5) return `Likely enough for ${Math.floor(daysCoverage)} days`;
   return "Likely enough for several days";
@@ -627,6 +651,10 @@ function getWhyItMatters(
   }
   if (daysCoverage === null) return "Mise needs more sales history before it can predict coverage with confidence.";
   if (daysCoverage <= 1.5) return "Current stock may not cover tomorrow's projected demand.";
+  const leadTimeDays = normalizeLeadTimeDays(item.lead_time_days);
+  if (leadTimeDays > 0 && daysCoverage <= leadTimeDays) {
+    return `Coverage is at or below the ${leadTimeDays}-day supplier lead time, so waiting may create a stockout gap.`;
+  }
   if (trend === "rising") return `${item.item_name} may move faster than your usual ordering rhythm.`;
   if (daysCoverage >= 8) return "This may tie up cash or create waste risk before the next order cycle.";
   return "Current stock appears aligned with recent usage.";

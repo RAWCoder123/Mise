@@ -119,6 +119,10 @@ export interface InventoryItem {
   current_quantity: number;
   par_level: number;
   reorder_threshold: number;
+  /** Whole days until delivery. 0 means unknown or same-day. */
+  lead_time_days?: number;
+  /** Minimum purchasable quantity in inventory units. 0 means no MOQ. */
+  minimum_order_quantity?: number;
   estimated_unit_cost: number;
   supplier_id: string;
   /** Display snapshot. Hosted reads overlay the supplier's current name. */
@@ -688,7 +692,14 @@ export interface TodaySummary {
 }
 
 export type InventoryItemPatch = Partial<
-  Pick<InventoryItem, "current_quantity" | "par_level" | "reorder_threshold">
+  Pick<
+    InventoryItem,
+    | "current_quantity"
+    | "par_level"
+    | "reorder_threshold"
+    | "lead_time_days"
+    | "minimum_order_quantity"
+  >
 >;
 
 export type PosProvider = "Toast" | "Square" | "Clover" | "Lightspeed" | "Manual CSV Upload";

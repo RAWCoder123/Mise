@@ -408,13 +408,21 @@ function requireBoundedInteger(value: unknown, fieldName: string, minimum: numbe
 
 function requireInventoryPatch(value: unknown) {
   const patch = requireRecord(value, "patch");
-  const allowed = new Set(["par_level", "reorder_threshold"]);
+  const allowed = new Set([
+    "par_level",
+    "reorder_threshold",
+    "lead_time_days",
+    "minimum_order_quantity"
+  ]);
   if (Object.keys(patch).length === 0 || Object.keys(patch).some((key) => !allowed.has(key))) {
     throw new HttpError(400, "patch contains unsupported fields.");
   }
   const normalized: Record<string, string | number> = {};
-  for (const field of ["par_level", "reorder_threshold"] as const) {
+  for (const field of ["par_level", "reorder_threshold", "minimum_order_quantity"] as const) {
     if (patch[field] !== undefined) normalized[field] = requireBoundedNumber(patch[field], field, 0, 1_000_000);
+  }
+  if (patch.lead_time_days !== undefined) {
+    normalized.lead_time_days = requireBoundedInteger(patch.lead_time_days, "lead_time_days", 0, 365);
   }
   return normalized;
 }
