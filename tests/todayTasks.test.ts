@@ -268,6 +268,8 @@ function outlook(
       demandTrend: "normal",
       trendLabel: "Normal demand",
       suggestedOrderQuantity: 18,
+      suggestedOrderByDate: projectedStatus === "Critical" ? "2026-07-18" : "2026-07-19",
+      daysUntilSuggestedOrder: projectedStatus === "Critical" ? 0 : 1,
       suggestedAction: projectedStatus === "Watch" ? "Update count before ordering" : "Order 18 lb",
       urgency: projectedStatus === "Critical" ? "high" : projectedStatus === "Low" ? "medium" : "low",
       basis: "Restaurant history",

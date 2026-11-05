@@ -34,6 +34,7 @@ import { formatQuantity, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../.
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
+import { computeSuggestedOrderByDate } from "./suggestedOrderByDate";
 import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
@@ -513,6 +514,14 @@ export function buildInventoryPrediction(
       : "Recommendation is based on current par level until enough sales history builds up.";
   const whyItMatters = getWhyItMatters(safeItem, daysCoverage, demandTrend, recentUsage, projectedQuantity);
   const recommendationCopy = getRecommendationCopy(safeItem, suggestedOrderQuantity, coverageLabel, demandTrend, projectedStatus, recentUsage);
+  const orderBy = computeSuggestedOrderByDate({
+    operatingDate,
+    projectedQuantity,
+    reorderThreshold: safeItem.reorder_threshold,
+    averageDailyUsage,
+    suggestedOrderQuantity,
+    contaminatedProjection
+  });
 
   return {
     averageDailyUsage,
@@ -526,6 +535,8 @@ export function buildInventoryPrediction(
     demandTrend,
     trendLabel,
     suggestedOrderQuantity,
+    suggestedOrderByDate: orderBy.suggestedOrderByDate,
+    daysUntilSuggestedOrder: orderBy.daysUntilSuggestedOrder,
     suggestedAction,
     urgency,
     basis,
