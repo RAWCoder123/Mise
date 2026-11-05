@@ -490,6 +490,12 @@ function assertRestaurantExportProtectedDataAbsent(value: unknown): void {
   }
 }
 
+export interface PlanningSupplierSchedule {
+  supplierId: string;
+  deliveryDays: number[];
+  orderCutoffMinutes: number | null;
+}
+
 export interface PlanningData {
   inventoryItems: InventoryItem[];
   sales: PosSale[];
@@ -498,6 +504,8 @@ export interface PlanningData {
   operatingDate: string;
   /** Restaurant timezone, needed to place a verified count inside the right operating day. */
   timeZone: string;
+  /** Supplier delivery windows used for coverage-versus-next-delivery risk. */
+  supplierSchedules: PlanningSupplierSchedule[];
 }
 
 export interface MiseRepository {
@@ -566,6 +574,12 @@ export interface MiseRepository {
   fetchSuppliers(restaurantId: string): Promise<Supplier[]>;
   createSupplier(restaurantId: string, displayName: string): Promise<Supplier>;
   renameSupplier(restaurantId: string, supplierId: string, displayName: string): Promise<Supplier>;
+  updateSupplierDeliverySchedule(
+    restaurantId: string,
+    supplierId: string,
+    deliveryDays: number[],
+    orderCutoffMinutes: number | null
+  ): Promise<Supplier>;
   reassignInventoryItemSupplier(
     restaurantId: string,
     itemId: string,

@@ -77,6 +77,16 @@ export interface Supplier {
   restaurant_id: string;
   display_name: string;
   normalized_name: string;
+  /**
+   * Weekdays the supplier delivers. 0=Sunday … 6=Saturday.
+   * Empty means the delivery schedule is unknown.
+   */
+  delivery_days?: number[];
+  /**
+   * Local restaurant minutes from midnight for catching a same-day delivery.
+   * Null/undefined means the cutoff is unknown.
+   */
+  order_cutoff_minutes?: number | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,4 +1,8 @@
 import type { Supplier, SupplierRecipient } from "../../types/mise";
+import {
+  normalizeDeliveryDays,
+  normalizeOrderCutoffMinutes
+} from "./supplierDeliverySchedule";
 
 export interface SupplierRecipientDirectoryEntry {
   restaurantId: string;
@@ -8,6 +12,8 @@ export interface SupplierRecipientDirectoryEntry {
   recipientId: string | null;
   updatedAt: string | null;
   source: "current" | "saved" | "current_and_saved";
+  deliveryDays: number[];
+  orderCutoffMinutes: number | null;
 }
 
 /**
@@ -38,7 +44,9 @@ export function buildSupplierRecipientDirectory(
       email: null,
       recipientId: null,
       updatedAt: null,
-      source: "current"
+      source: "current",
+      deliveryDays: normalizeDeliveryDays(supplier.delivery_days),
+      orderCutoffMinutes: normalizeOrderCutoffMinutes(supplier.order_cutoff_minutes)
     });
   }
 
@@ -58,7 +66,9 @@ export function buildSupplierRecipientDirectory(
       email: recipient.email,
       recipientId: recipient.id,
       updatedAt: recipient.updated_at,
-      source: "current_and_saved"
+      source: "current_and_saved",
+      deliveryDays: existing.deliveryDays,
+      orderCutoffMinutes: existing.orderCutoffMinutes
     });
   }
 

@@ -73,6 +73,8 @@ export function createDemoSupplier(
     restaurant_id: restaurantId,
     display_name: canonicalDisplayName,
     normalized_name: demoSupplierNormalizedName(canonicalDisplayName),
+    delivery_days: [],
+    order_cutoff_minutes: null,
     created_at: now,
     updated_at: now
   };

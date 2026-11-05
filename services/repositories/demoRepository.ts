@@ -128,6 +128,10 @@ import {
   demoSupplierNormalizedName
 } from "../demo/demoSupplierIdentity";
 import {
+  normalizeDeliveryDays,
+  normalizeOrderCutoffMinutes
+} from "../domain/supplierDeliverySchedule";
+import {
   normalizeAppUser,
   normalizeInsight,
   normalizeAiInsight,
@@ -1320,6 +1324,44 @@ export function createLocalDemoRepository(): MiseRepository {
       });
     },
 
+    async updateSupplierDeliverySchedule(restaurantId, supplierId, deliveryDays, orderCutoffMinutes) {
+      return mutateDemoState((state) => {
+        requireActiveDemoRestaurant(state, restaurantId);
+        const supplier = state.suppliers.find(
+          (entry) => entry.restaurant_id === restaurantId && entry.id === supplierId
+        );
+        if (!supplier) throw new Error("Supplier not found");
+        const normalizedDays = normalizeDeliveryDays(deliveryDays);
+        const normalizedCutoff = normalizeOrderCutoffMinutes(orderCutoffMinutes);
+        const previousDays = normalizeDeliveryDays(supplier.delivery_days);
+        const previousCutoff = normalizeOrderCutoffMinutes(supplier.order_cutoff_minutes);
+        if (
+          previousDays.join(",") === normalizedDays.join(",") &&
+          previousCutoff === normalizedCutoff
+        ) {
+          return normalizeSupplier(supplier);
+        }
+        supplier.delivery_days = normalizedDays;
+        supplier.order_cutoff_minutes = normalizedCutoff;
+        supplier.updated_at = new Date().toISOString();
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "supplier_delivery_schedule_updated",
+          entity_table: "suppliers",
+          entity_id: supplier.id,
+          metadata: {
+            supplier_id: supplier.id,
+            previous_delivery_days: previousDays,
+            delivery_days: normalizedDays,
+            previous_order_cutoff_minutes: previousCutoff,
+            order_cutoff_minutes: normalizedCutoff,
+            simulated: true
+          }
+        });
+        return normalizeSupplier(supplier);
+      });
+    },
+
     async reassignInventoryItemSupplier(restaurantId, itemId, supplierId) {
       return mutateDemoState((state) => {
         requireActiveDemoRestaurant(state, restaurantId);
@@ -1585,6 +1627,9 @@ export function createLocalDemoRepository(): MiseRepository {
       const state = await readReadyDemoState(restaurantId);
       const providerMappings = await this.fetchVerifiedProviderMappings(restaurantId);
       const restaurant = fetchRestaurantFromState(state, restaurantId);
+      const suppliers = state.suppliers
+        .filter((supplier) => supplier.restaurant_id === restaurantId)
+        .map(normalizeSupplier);
       return {
         inventoryItems: state.inventoryItems.filter((item) => item.restaurant_id === restaurantId).map(normalizeInventoryItem),
         sales: state.posSales.filter((sale) => sale.restaurant_id === restaurantId).map(normalizePosSale),
@@ -1593,7 +1638,12 @@ export function createLocalDemoRepository(): MiseRepository {
           .map(normalizeMenuItemIngredient),
         providerMappings,
         operatingDate: toDateKeyInTimeZone(new Date(), restaurant.timezone),
-        timeZone: restaurant.timezone
+        timeZone: restaurant.timezone,
+        supplierSchedules: suppliers.map((supplier) => ({
+          supplierId: supplier.id,
+          deliveryDays: normalizeDeliveryDays(supplier.delivery_days),
+          orderCutoffMinutes: normalizeOrderCutoffMinutes(supplier.order_cutoff_minutes)
+        }))
       };
     },
 

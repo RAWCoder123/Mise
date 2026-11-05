@@ -15,6 +15,14 @@ import {
   saleRequiresVerifiedProviderIdentity,
   type VerifiedProviderSaleMapping
 } from "./providerSaleIdentity.ts";
+import {
+  coverageMissesNextDelivery,
+  daysUntilNextDelivery,
+  localMinutesInTimeZone,
+  normalizeDeliveryDays,
+  normalizeOrderCutoffMinutes,
+  type SupplierDeliverySchedule
+} from "./supplierDeliverySchedule.ts";
 
 export interface OperationalInventoryItem {
   id: string;
@@ -107,6 +115,17 @@ export interface OperationalPlanningSnapshot {
   ledgerComplete?: boolean;
   /** Restaurant timezone, used to place a count inside the correct operating day. */
   timeZone?: string | null;
+  /**
+   * Optional supplier delivery schedules keyed by supplier id. Absent or empty
+   * schedules preserve pre-tip recommendation behavior.
+   */
+  supplierSchedules?: readonly OperationalSupplierSchedule[];
+}
+
+export interface OperationalSupplierSchedule {
+  supplierId: string;
+  deliveryDays?: readonly number[];
+  orderCutoffMinutes?: number | null;
 }
 
 export function calculateOperationalSignals(snapshot: OperationalPlanningSnapshot) {
@@ -134,6 +153,8 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
   );
   const handled = latestHandledByItem(snapshot.recommendationHistory);
   const learned = learnedQuantities(snapshot.recommendationHistory);
+  const schedulesBySupplier = supplierScheduleMap(snapshot.supplierSchedules);
+  const localMinutes = localMinutesInTimeZone(new Date(now), timeZone);
   const recommendations: OperationalRecommendation[] = [];
   const insights: OperationalInsight[] = [];
 
@@ -173,6 +194,18 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
     const threshold = finiteNonNegative(item.reorder_threshold);
     const isCritical = projectedQuantity <= 0;
     const isLow = !isCritical && projectedQuantity <= threshold;
+    const coverage = baselineUsage > 0 ? projectedQuantity / baselineUsage : null;
+    const schedule = schedulesBySupplier.get(item.supplier_id);
+    const daysUntilDelivery = schedule
+      ? daysUntilNextDelivery({
+          operatingDate: snapshot.operatingDate,
+          deliveryDays: schedule.deliveryDays,
+          orderCutoffMinutes: schedule.orderCutoffMinutes,
+          localMinutes
+        })
+      : null;
+    const deliveryWindowRisk =
+      !isCritical && !isLow && coverageMissesNextDelivery(coverage, daysUntilDelivery);
     const suggested = Math.max(1, Math.ceil(finiteNonNegative(item.par_level) - projectedQuantity));
     const recentHandled = handled.get(item.id);
     // Only a newer verified physical count releases a handled recommendation;
@@ -181,17 +214,18 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
       ? verifiedCountSupersedes(itemCountEvidence, recentHandled.created_at)
       : false;
 
-    if ((isCritical || isLow) && (!recentHandled || recountedAfterHandling)) {
+    if ((isCritical || isLow || deliveryWindowRisk) && (!recentHandled || recountedAfterHandling)) {
       const learnedQuantity = boundedLearnedQuantity(
         learned.get(`${item.id}\u001f${canonicalInventoryUnit(item.unit)}`),
         suggested,
         item.par_level
       );
       const quantity = learnedQuantity ?? suggested;
-      const coverage = baselineUsage > 0 ? projectedQuantity / baselineUsage : null;
-      const reason = coverage === null
-        ? `${item.item_name} is at or below its reorder level. Mise recommends restoring it to par.`
-        : `${item.item_name} has about ${round(coverage)} service days of projected coverage based on mapped demand.`;
+      const reason = isCritical || isLow
+        ? coverage === null
+          ? `${item.item_name} is at or below its reorder level. Mise recommends restoring it to par.`
+          : `${item.item_name} has about ${round(coverage)} service days of projected coverage based on mapped demand.`
+        : `${item.item_name} has about ${round(coverage ?? 0)} service days of coverage, which may not last until the next ${item.supplier_name} delivery in ${daysUntilDelivery} day${daysUntilDelivery === 1 ? "" : "s"}.`;
       recommendations.push({
         restaurant_id: snapshot.restaurantId,
         inventory_item_id: item.id,
@@ -209,9 +243,15 @@ export function calculateOperationalSignals(snapshot: OperationalPlanningSnapsho
         id: `insight_low_${item.id}`,
         restaurant_id: snapshot.restaurantId,
         insight_type: "inventory",
-        title: isCritical ? `${item.item_name} may run out today` : `${item.item_name} is below its normal level`,
+        title: isCritical
+          ? `${item.item_name} may run out today`
+          : deliveryWindowRisk
+            ? `${item.item_name} may not cover the next delivery window`
+            : `${item.item_name} is below its normal level`,
         description: `${item.item_name} is projected at ${round(projectedQuantity)} ${item.unit} after mapped POS demand.`,
-        why_it_matters: "This can interrupt prep or force an 86 mid-service.",
+        why_it_matters: deliveryWindowRisk
+          ? "Waiting past the supplier delivery schedule can create a stockout gap before the next truck."
+          : "This can interrupt prep or force an 86 mid-service.",
         recommended_action: `Check the walk-in, then add ${quantity} ${item.unit} on the next ${item.supplier_name} ticket.`,
         severity: isCritical ? "urgent" : "warning",
         created_at: now,
@@ -351,7 +391,8 @@ export function buildRecommendationInserts(
     ledgerComplete?: boolean;
     timeZone?: string | null;
   } = {},
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  supplierSchedules: readonly OperationalSupplierSchedule[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -363,7 +404,8 @@ export function buildRecommendationInserts(
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone,
-    providerMappings
+    providerMappings,
+    supplierSchedules
   }).recommendations;
 }
 
@@ -378,7 +420,8 @@ export function buildInsightsFromData(
     ledgerComplete?: boolean;
     timeZone?: string | null;
   } = {},
-  providerMappings: readonly VerifiedProviderSaleMapping[] = []
+  providerMappings: readonly VerifiedProviderSaleMapping[] = [],
+  supplierSchedules: readonly OperationalSupplierSchedule[] = []
 ) {
   return calculateOperationalSignals({
     restaurantId,
@@ -390,8 +433,23 @@ export function buildInsightsFromData(
     inventoryLedgerEvents: countEvidence.inventoryLedgerEvents,
     ledgerComplete: countEvidence.ledgerComplete,
     timeZone: countEvidence.timeZone,
-    providerMappings
+    providerMappings,
+    supplierSchedules
   }).insights;
+}
+
+function supplierScheduleMap(
+  schedules: readonly OperationalSupplierSchedule[] | undefined
+): Map<string, SupplierDeliverySchedule> {
+  const result = new Map<string, SupplierDeliverySchedule>();
+  for (const entry of schedules ?? []) {
+    if (!entry?.supplierId || typeof entry.supplierId !== "string") continue;
+    result.set(entry.supplierId, {
+      deliveryDays: normalizeDeliveryDays(entry.deliveryDays),
+      orderCutoffMinutes: normalizeOrderCutoffMinutes(entry.orderCutoffMinutes)
+    });
+  }
+  return result;
 }
 
 function historicalDailyDemand(
