@@ -191,6 +191,16 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // Count may observe zero on hand; stockout is always an explicit zero.
+  // Every other ledger type must move inventory — mirrors
+  // private.reject_zero_quantity_inventory_event.
+  if (
+    input.eventType !== "count" &&
+    input.eventType !== "stockout" &&
+    input.quantity === 0
+  ) {
+    return "zero_quantity_not_allowed";
+  }
   return null;
 }
 
