@@ -1,3 +1,5 @@
+import type { PosLocation } from "../../types/mise";
+import { requirePosLocationOperatorStatus } from "../domain/posLocations";
 import {
   SquareIntegrationError,
   type SquareConnectionWorkflowResult,
@@ -21,6 +23,22 @@ const repository = getMiseRepository();
 
 export async function fetchSquarePosIntegration(restaurantId: string) {
   return repository.fetchSquarePosIntegration(requireWorkflowId(restaurantId, "restaurant"));
+}
+
+export async function fetchPosLocations(restaurantId: string): Promise<PosLocation[]> {
+  return repository.fetchPosLocations(requireWorkflowId(restaurantId, "restaurant"));
+}
+
+export async function setPosLocationStatus(
+  restaurantId: string,
+  locationId: string,
+  status: "active" | "paused"
+): Promise<PosLocation> {
+  return repository.setPosLocationStatus(
+    requireWorkflowId(restaurantId, "restaurant"),
+    requireWorkflowId(locationId, "location"),
+    requirePosLocationOperatorStatus(status)
+  );
 }
 
 export async function fetchPosMappingReviewQueue(
