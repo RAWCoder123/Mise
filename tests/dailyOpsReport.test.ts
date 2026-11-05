@@ -299,6 +299,8 @@ test("buildDailyOpsReport estimates dollars at risk from outlooks", () => {
         demandTrend: "normal",
         trendLabel: "Steady",
         suggestedOrderQuantity: 20,
+        suggestedOrderByDate: "2026-08-01",
+        daysUntilSuggestedOrder: 0,
         suggestedAction: "Order",
         urgency: "high",
         basis: "history",

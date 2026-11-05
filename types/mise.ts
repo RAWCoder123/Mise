@@ -445,6 +445,14 @@ export interface InventoryPrediction {
   demandTrend: DemandTrend;
   trendLabel: string;
   suggestedOrderQuantity: number;
+  /**
+   * Operating calendar date when projected on-hand would hit the reorder
+   * threshold at the current demand rate. Null when Mise cannot date an order
+   * (no demand rate, no order quantity, or contaminated projection).
+   */
+  suggestedOrderByDate: string | null;
+  /** Fractional service days until that reorder threshold, or null with the date. */
+  daysUntilSuggestedOrder: number | null;
   suggestedAction: string;
   urgency: Urgency;
   basis: string;

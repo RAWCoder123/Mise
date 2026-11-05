@@ -42,7 +42,7 @@ import { statusTone } from "../../utils/inventory";
 type InventoryOperatorAction = "count" | "receipt" | "waste" | "stockout";
 
 export default function InventoryDetailScreen() {
-  const { formatNumber, parseNumber, t } = useLocale();
+  const { formatDate, formatNumber, parseNumber, t } = useLocale();
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const { memberships, restaurant } = useMiseSession();
@@ -467,11 +467,30 @@ export default function InventoryDetailScreen() {
                 </Text>
                 <Text style={styles.factLabel}>{t("inventory.detail.daysCoverage")}</Text>
               </View>
+              <View style={styles.fact}>
+                <Text style={styles.factValue}>
+                  {prediction.suggestedOrderByDate
+                    ? formatDate(prediction.suggestedOrderByDate, { month: "short", day: "numeric" })
+                    : "—"}
+                </Text>
+                <Text style={styles.factLabel}>{t("inventory.detail.orderByDate")}</Text>
+              </View>
             </View>
             <View style={styles.recommendationBox}>
               <Text style={styles.kicker}>{t("inventory.detail.recommendation")}</Text>
               <Text style={styles.recommendation}>{localizedPrediction.recommendation}</Text>
               <Text style={styles.copy}>{localizedPrediction.whyItMatters}</Text>
+              {prediction.suggestedOrderByDate ? (
+                <Text style={styles.copy}>
+                  {t("inventory.detail.orderByDate.explanation", {
+                    date: formatDate(prediction.suggestedOrderByDate, {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric"
+                    })
+                  })}
+                </Text>
+              ) : null}
             </View>
             {mutationAllowed ? (
               <Button
