@@ -132,7 +132,7 @@ test("operational signals round recommendations to verified supplier packs", () 
 
 test("migration pins pack verification RPC and snapshot pack payload", () => {
   const migration = readFileSync(
-    "supabase/migrations/20260831020000_verify_supplier_item_pack_quantity.sql",
+    "supabase/migrations/20261105060000_verify_supplier_item_pack_quantity.sql",
     "utf8"
   );
   assert.match(migration, /create or replace function public\.verify_supplier_item_pack_quantity/i);
