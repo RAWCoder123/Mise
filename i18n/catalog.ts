@@ -537,6 +537,10 @@ const en = {
   "inventory.detail.recentUsage": "Recent usage pattern",
   "inventory.detail.perDay": "{unit} per day",
   "inventory.detail.daysCoverage": "days coverage",
+  "inventory.detail.stockoutProbability": "stockout risk",
+  "inventory.detail.stockoutProbability.value": "{percent}%",
+  "inventory.detail.stockoutProbability.explanation":
+    "At the current demand rate, there is about {percent}% chance projected on-hand reaches zero within the next two service days.",
   "inventory.detail.recommendation": "Mise recommendation",
   "inventory.detail.addToOrder": "Add to Order",
   "inventory.detail.addAccessibility": "Add {item} to supplier orders",
@@ -2835,6 +2839,10 @@ const es = {
   "inventory.detail.recentUsage": "Patrón de uso reciente",
   "inventory.detail.perDay": "{unit} por día",
   "inventory.detail.daysCoverage": "días de cobertura",
+  "inventory.detail.stockoutProbability": "riesgo de quiebre",
+  "inventory.detail.stockoutProbability.value": "{percent}%",
+  "inventory.detail.stockoutProbability.explanation":
+    "Con la demanda actual, hay cerca de un {percent}% de probabilidad de que el inventario proyectado llegue a cero en los próximos dos días de servicio.",
   "inventory.detail.recommendation": "Recomendación de Mise",
   "inventory.detail.addToOrder": "Agregar al pedido",
   "inventory.detail.addAccessibility": "Agregar {item} a los pedidos de proveedores",
@@ -5129,6 +5137,10 @@ const zhHans = {
   "inventory.detail.recentUsage": "近期使用模式",
   "inventory.detail.perDay": "每日 {unit}",
   "inventory.detail.daysCoverage": "可覆盖天数",
+  "inventory.detail.stockoutProbability": "缺货风险",
+  "inventory.detail.stockoutProbability.value": "{percent}%",
+  "inventory.detail.stockoutProbability.explanation":
+    "按当前需求速度，预计库存在未来两个营业日内降至零的可能性约为 {percent}%。",
   "inventory.detail.recommendation": "Mise 建议",
   "inventory.detail.addToOrder": "加入订单",
   "inventory.detail.addAccessibility": "将 {item} 加入供应商订单",
