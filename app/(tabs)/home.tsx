@@ -27,6 +27,7 @@ import type {
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
+import { normalizeHomeApprovalsWhyItMatters } from "../../services/domain/presentationHomeApprovalsWhyItMattersIdentity";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
   classifyOperationalTodayTaskTiming,
@@ -381,11 +382,23 @@ function ApprovalsSection({
       ) : (
         cards.map((card) => {
           const canOneTap = Boolean(card.recommendationId);
+          // MISE-005YC: pin Home ApprovalsSection card.whyItMatters to ASCII C.
+          // Soft-null empty / Unicode-padded / unsafe why copy so metaLine falls
+          // through to home.approvals.whyItMatters.none without inventing clean
+          // reason equality via Unicode String#trim. Prior always-pass path let
+          // non-nullish Unicode-only space or empty string render a blank-looking
+          // "Why it matters:" line. Leave card.title (#1049), recommendedAction
+          // (#1134), StatusNotice approval titles (#1011), StatusNotice
+          // primaryApproval?.whyItMatters message pass-through, and Home greeting
+          // restaurant.name (#1044) alone on this tip.
+          const whyItMatters = normalizeHomeApprovalsWhyItMatters(card.whyItMatters);
           return (
             <View key={card.id} style={styles.briefCard}>
               <Text style={styles.cardTitle}>{card.title}</Text>
               <Text style={styles.cardBody}>{card.recommendedAction}</Text>
-              <Text style={styles.metaLine}>{t("home.approvals.why")}: {card.whyItMatters}</Text>
+              <Text style={styles.metaLine}>
+                {t("home.approvals.why")}: {whyItMatters || t("home.approvals.whyItMatters.none")}
+              </Text>
               <View style={styles.approvalActions}>
                 <Button
                   title={
