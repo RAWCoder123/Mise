@@ -445,6 +445,14 @@ export interface InventoryPrediction {
   demandTrend: DemandTrend;
   trendLabel: string;
   suggestedOrderQuantity: number;
+  /**
+   * Operating-day calendar date when projected on-hand would reach zero at the
+   * current demand rate. Null when Mise must not invent a date (no demand rate
+   * or contaminated projection).
+   */
+  projectedStockoutDate: string | null;
+  /** Fractional service days until projected on-hand reaches zero, or null with the date. */
+  daysUntilStockout: number | null;
   suggestedAction: string;
   urgency: Urgency;
   basis: string;
