@@ -537,6 +537,10 @@ const en = {
   "inventory.detail.recentUsage": "Recent usage pattern",
   "inventory.detail.perDay": "{unit} per day",
   "inventory.detail.daysCoverage": "days coverage",
+  "inventory.detail.historySampleDays": "history sample days",
+  "inventory.detail.historySampleDays.value": "{count}",
+  "inventory.detail.historySampleDays.explanation":
+    "Demand memory uses {count} restaurant service days, so one unusual day cannot set the baseline alone.",
   "inventory.detail.recommendation": "Mise recommendation",
   "inventory.detail.addToOrder": "Add to Order",
   "inventory.detail.addAccessibility": "Add {item} to supplier orders",
@@ -2835,6 +2839,10 @@ const es = {
   "inventory.detail.recentUsage": "Patrón de uso reciente",
   "inventory.detail.perDay": "{unit} por día",
   "inventory.detail.daysCoverage": "días de cobertura",
+  "inventory.detail.historySampleDays": "días de historial",
+  "inventory.detail.historySampleDays.value": "{count}",
+  "inventory.detail.historySampleDays.explanation":
+    "La memoria de demanda usa {count} días de servicio del restaurante, así que un día inusual no puede fijar la línea base solo.",
   "inventory.detail.recommendation": "Recomendación de Mise",
   "inventory.detail.addToOrder": "Agregar al pedido",
   "inventory.detail.addAccessibility": "Agregar {item} a los pedidos de proveedores",
@@ -5129,6 +5137,10 @@ const zhHans = {
   "inventory.detail.recentUsage": "近期使用模式",
   "inventory.detail.perDay": "每日 {unit}",
   "inventory.detail.daysCoverage": "可覆盖天数",
+  "inventory.detail.historySampleDays": "历史样本天数",
+  "inventory.detail.historySampleDays.value": "{count}",
+  "inventory.detail.historySampleDays.explanation":
+    "需求记忆使用 {count} 个餐厅营业日样本，因此单独一天的异常用量不能决定基线。",
   "inventory.detail.recommendation": "Mise 建议",
   "inventory.detail.addToOrder": "加入订单",
   "inventory.detail.addAccessibility": "将 {item} 加入供应商订单",

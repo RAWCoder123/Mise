@@ -467,11 +467,32 @@ export default function InventoryDetailScreen() {
                 </Text>
                 <Text style={styles.factLabel}>{t("inventory.detail.daysCoverage")}</Text>
               </View>
+              <View style={styles.fact}>
+                <Text style={styles.factValue}>
+                  {prediction.historySampleDaysFact === null
+                    ? "—"
+                    : t("inventory.detail.historySampleDays.value", {
+                        count: formatNumber(prediction.historySampleDaysFact, {
+                          maximumFractionDigits: 0
+                        })
+                      })}
+                </Text>
+                <Text style={styles.factLabel}>{t("inventory.detail.historySampleDays")}</Text>
+              </View>
             </View>
             <View style={styles.recommendationBox}>
               <Text style={styles.kicker}>{t("inventory.detail.recommendation")}</Text>
               <Text style={styles.recommendation}>{localizedPrediction.recommendation}</Text>
               <Text style={styles.copy}>{localizedPrediction.whyItMatters}</Text>
+              {prediction.historySampleDaysFact !== null ? (
+                <Text style={styles.copy}>
+                  {t("inventory.detail.historySampleDays.explanation", {
+                    count: formatNumber(prediction.historySampleDaysFact, {
+                      maximumFractionDigits: 0
+                    })
+                  })}
+                </Text>
+              ) : null}
             </View>
             {mutationAllowed ? (
               <Button

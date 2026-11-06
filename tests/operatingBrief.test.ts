@@ -61,6 +61,7 @@ function prediction(overrides: Partial<InventoryPrediction> = {}): InventoryPred
   return {
     averageDailyUsage: 20,
     historySampleDays: 28,
+    historySampleDaysFact: 28,
     historySource: "restaurant_history",
     todayDepletion: 8,
     projectedQuantity: 7.7,

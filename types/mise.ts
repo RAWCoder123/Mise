@@ -436,6 +436,13 @@ export interface AttentionCard {
 export interface InventoryPrediction {
   averageDailyUsage: number;
   historySampleDays: number;
+  /**
+   * Scannable restaurant service-day sample count behind demand memory.
+   * Null when contaminated or when Mise has no restaurant_history samples, so
+   * the detail fact never invents history depth from demo or current-day-only
+   * demand.
+   */
+  historySampleDaysFact: number | null;
   historySource: "restaurant_history" | "demo_fallback" | "current_day" | "none";
   todayDepletion: number;
   projectedQuantity: number;
