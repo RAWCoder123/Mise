@@ -467,11 +467,41 @@ export default function InventoryDetailScreen() {
                 </Text>
                 <Text style={styles.factLabel}>{t("inventory.detail.daysCoverage")}</Text>
               </View>
+              <View style={styles.fact}>
+                <Text style={styles.factValue}>
+                  {prediction.mappedTodayUsage <= 0
+                    ? "—"
+                    : t("inventory.detail.mappedTodayUsage.value", {
+                        quantity: formatNumber(prediction.mappedTodayUsage, {
+                          maximumFractionDigits: 1
+                        }),
+                        unit: item.unit
+                      })}
+                </Text>
+                <Text style={styles.factLabel}>{t("inventory.detail.mappedTodayUsage")}</Text>
+              </View>
             </View>
             <View style={styles.recommendationBox}>
               <Text style={styles.kicker}>{t("inventory.detail.recommendation")}</Text>
               <Text style={styles.recommendation}>{localizedPrediction.recommendation}</Text>
               <Text style={styles.copy}>{localizedPrediction.whyItMatters}</Text>
+              {prediction.mappedTodayUsage > 0 ? (
+                <Text style={styles.copy}>
+                  {prediction.mappedTodayUsage > prediction.todayDepletion
+                    ? t("inventory.detail.mappedTodayUsage.explanationAbsorbed", {
+                        quantity: formatNumber(prediction.mappedTodayUsage, {
+                          maximumFractionDigits: 1
+                        }),
+                        unit: item.unit
+                      })
+                    : t("inventory.detail.mappedTodayUsage.explanation", {
+                        quantity: formatNumber(prediction.mappedTodayUsage, {
+                          maximumFractionDigits: 1
+                        }),
+                        unit: item.unit
+                      })}
+                </Text>
+              ) : null}
             </View>
             {mutationAllowed ? (
               <Button
