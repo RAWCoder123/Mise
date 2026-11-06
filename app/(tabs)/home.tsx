@@ -28,6 +28,7 @@ import type {
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
+import { normalizeHomeApprovalsRecommendedAction } from "../../services/domain/presentationHomeApprovalsRecommendedActionIdentity";
 import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
@@ -381,10 +382,23 @@ function ApprovalsSection({
       ) : (
         cards.map((card) => {
           const canOneTap = Boolean(card.recommendationId);
+          // MISE-005YB: pin Home ApprovalsSection card.recommendedAction to ASCII C.
+          // Soft-null / Unicode-padded recommended actions fall through to
+          // home.approvals.recommendedAction.none without inventing clean action
+          // copy from NBSP/em-space padding, and without letting Unicode-only
+          // space or empty string render a blank-looking cardBody. Leave
+          // card.title (#1049), whyItMatters body copy, StatusNotice approval
+          // titles (#1011), Home greeting restaurant.name (#1044), and finding /
+          // Daily Brief recommended-action domain tips alone.
+          const recommendedAction = normalizeHomeApprovalsRecommendedAction(
+            card.recommendedAction
+          );
           return (
             <View key={card.id} style={styles.briefCard}>
               <Text style={styles.cardTitle}>{card.title}</Text>
-              <Text style={styles.cardBody}>{card.recommendedAction}</Text>
+              <Text style={styles.cardBody}>
+                {recommendedAction || t("home.approvals.recommendedAction.none")}
+              </Text>
               <Text style={styles.metaLine}>{t("home.approvals.why")}: {card.whyItMatters}</Text>
               <View style={styles.approvalActions}>
                 <Button
