@@ -14,6 +14,7 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefBoardEffectiveRecommendedAction } from "../../services/domain/presentationDailyBriefBoardEffectiveRecommendedActionIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -257,7 +258,24 @@ function FindingCard({
       {finding.managerFeedback.state !== "unreviewed" ? (
         <>
           <Text style={styles.kicker}>{t("dailyBrief.feedback.annotation")}</Text>
-          <Text style={styles.annotation}>{finding.managerFeedback.effectiveRecommendedAction}</Text>
+          {/*
+            MISE-005YL: pin Daily Brief Board
+            managerFeedback.effectiveRecommendedAction to ASCII C.
+            Soft-null / Unicode-padded annotations fall through to
+            dailyBrief.feedback.effectiveRecommendedAction.none without
+            inventing clean annotation copy from NBSP/em-space padding, and
+            without letting Unicode-only space or empty string render a
+            blank-looking manager-note line. Leave finding.title (#920),
+            explanation Board display (#1142), recommendedAction Board
+            display (#1143), domain recommendedAction (#922), Daily Brief
+            edit (#884), domain explanation (#921), and Daily Phase Brief
+            interpretation (#1085) alone.
+          */}
+          <Text style={styles.annotation}>
+            {normalizeDailyBriefBoardEffectiveRecommendedAction(
+              finding.managerFeedback.effectiveRecommendedAction
+            ) || t("dailyBrief.feedback.effectiveRecommendedAction.none")}
+          </Text>
         </>
       ) : null}
 
