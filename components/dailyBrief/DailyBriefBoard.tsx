@@ -14,6 +14,7 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefBoardRecommendedAction } from "../../services/domain/presentationDailyBriefBoardRecommendedActionIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -253,7 +254,21 @@ function FindingCard({
       ) : null}
 
       <Text style={styles.kicker}>{t("dailyBrief.recommended")}</Text>
-      <Text style={styles.recommended}>{finding.recommendedAction}</Text>
+      {/*
+        MISE-005YK: pin Daily Brief Board finding.recommendedAction to ASCII C.
+        Soft-null / Unicode-padded recommended actions fall through to
+        dailyBrief.recommendedAction.none without inventing clean action copy
+        from NBSP/em-space padding, and without letting Unicode-only space or
+        empty string render a blank-looking recommended line. Leave
+        finding.title (#920), explanation Board display (#1142), domain
+        recommendedAction (#922), Daily Brief edit (#884),
+        effectiveRecommendedAction annotation, domain explanation (#921), and
+        Daily Phase Brief interpretation (#1085) alone.
+      */}
+      <Text style={styles.recommended}>
+        {normalizeDailyBriefBoardRecommendedAction(finding.recommendedAction) ||
+          t("dailyBrief.recommendedAction.none")}
+      </Text>
       {finding.managerFeedback.state !== "unreviewed" ? (
         <>
           <Text style={styles.kicker}>{t("dailyBrief.feedback.annotation")}</Text>
