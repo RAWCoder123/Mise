@@ -40,3 +40,4 @@ migrations, fitted statistical models.
 
 - Alone-OK on current `origin/main` (`78da7376`)
 - Ordinary UI conflicts possible with #1116–#1124 inventory detail stacks
+- PR: https://github.com/RAWCoder123/Mise/pull/1125 @ `29ebcfd1`
