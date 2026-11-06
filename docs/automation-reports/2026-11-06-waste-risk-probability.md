@@ -1,7 +1,8 @@
 # Waste risk probability on inventory predictions
 
 Date: 2026-11-06
-Branch: `cursor/mise-waste-risk-probability-main`
+PR: https://github.com/RAWCoder123/Mise/pull/1127
+Branch: `cursor/mise-waste-risk-probability-main` @ `48239f3d`
 
 ## Summary
 
