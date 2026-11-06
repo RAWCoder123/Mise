@@ -14,6 +14,7 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefBoardExplanation } from "../../services/domain/presentationDailyBriefBoardExplanationIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -238,7 +239,20 @@ function FindingCard({
       >
         {finding.title}
       </Text>
-      <Text style={styles.cardBody}>{finding.explanation}</Text>
+      {/*
+        MISE-005YJ: pin Daily Brief Board finding.explanation to ASCII C.
+        Soft-null / Unicode-padded explanations fall through to
+        dailyBrief.explanation.none without inventing clean explanation copy
+        from NBSP/em-space padding, and without letting Unicode-only space or
+        empty string render a blank-looking cardBody. Leave finding.title
+        (#920), recommendedAction domain/edit/display (#922 / #884),
+        effectiveRecommendedAction annotation, domain explanation boundedText
+        (#921), and Daily Phase Brief interpretation (#1085) alone.
+      */}
+      <Text style={styles.cardBody}>
+        {normalizeDailyBriefBoardExplanation(finding.explanation) ||
+          t("dailyBrief.explanation.none")}
+      </Text>
       <Text style={styles.meta}>
         {t("dailyBrief.confidence", { score: confidencePercent })} ·{" "}
         {t(evidenceCount === 1 ? "dailyBrief.evidenceCount.one" : "dailyBrief.evidenceCount.other", {
