@@ -467,11 +467,32 @@ export default function InventoryDetailScreen() {
                 </Text>
                 <Text style={styles.factLabel}>{t("inventory.detail.daysCoverage")}</Text>
               </View>
+              <View style={styles.fact}>
+                <Text style={styles.factValue}>
+                  {prediction.stockoutProbability === null
+                    ? "—"
+                    : t("inventory.detail.stockoutProbability.value", {
+                        percent: formatNumber(prediction.stockoutProbability * 100, {
+                          maximumFractionDigits: 0
+                        })
+                      })}
+                </Text>
+                <Text style={styles.factLabel}>{t("inventory.detail.stockoutProbability")}</Text>
+              </View>
             </View>
             <View style={styles.recommendationBox}>
               <Text style={styles.kicker}>{t("inventory.detail.recommendation")}</Text>
               <Text style={styles.recommendation}>{localizedPrediction.recommendation}</Text>
               <Text style={styles.copy}>{localizedPrediction.whyItMatters}</Text>
+              {prediction.stockoutProbability !== null ? (
+                <Text style={styles.copy}>
+                  {t("inventory.detail.stockoutProbability.explanation", {
+                    percent: formatNumber(prediction.stockoutProbability * 100, {
+                      maximumFractionDigits: 0
+                    })
+                  })}
+                </Text>
+              ) : null}
             </View>
             {mutationAllowed ? (
               <Button

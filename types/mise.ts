@@ -445,6 +445,12 @@ export interface InventoryPrediction {
   demandTrend: DemandTrend;
   trendLabel: string;
   suggestedOrderQuantity: number;
+  /**
+   * Chance projected on-hand reaches zero within the next two service days at
+   * the current demand rate (0–1). Null when Mise must not invent a rate
+   * (no demand rate or contaminated projection).
+   */
+  stockoutProbability: number | null;
   suggestedAction: string;
   urgency: Urgency;
   basis: string;
