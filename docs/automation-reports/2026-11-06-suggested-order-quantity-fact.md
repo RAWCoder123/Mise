@@ -2,7 +2,7 @@
 
 Date: 2026-11-06  
 Branch: `cursor/mise-suggested-order-quantity-fact-main`  
-PR: (filled after open)
+PR: https://github.com/RAWCoder123/Mise/pull/1129
 
 ## Summary
 
