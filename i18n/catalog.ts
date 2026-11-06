@@ -537,6 +537,10 @@ const en = {
   "inventory.detail.recentUsage": "Recent usage pattern",
   "inventory.detail.perDay": "{unit} per day",
   "inventory.detail.daysCoverage": "days coverage",
+  "inventory.detail.demandIntensity": "demand vs usual",
+  "inventory.detail.demandIntensity.value": "{ratio}×",
+  "inventory.detail.demandIntensity.explanation":
+    "Today's mapped demand is about {ratio}× the usual baseline. Above 1.15× usually means rising demand; below 0.8× usually means falling.",
   "inventory.detail.recommendation": "Mise recommendation",
   "inventory.detail.addToOrder": "Add to Order",
   "inventory.detail.addAccessibility": "Add {item} to supplier orders",
@@ -2835,6 +2839,10 @@ const es = {
   "inventory.detail.recentUsage": "Patrón de uso reciente",
   "inventory.detail.perDay": "{unit} por día",
   "inventory.detail.daysCoverage": "días de cobertura",
+  "inventory.detail.demandIntensity": "demanda vs habitual",
+  "inventory.detail.demandIntensity.value": "{ratio}×",
+  "inventory.detail.demandIntensity.explanation":
+    "La demanda mapeada de hoy es cerca de {ratio}× la línea base habitual. Por encima de 1.15× suele indicar demanda al alza; por debajo de 0.8× suele indicar caída.",
   "inventory.detail.recommendation": "Recomendación de Mise",
   "inventory.detail.addToOrder": "Agregar al pedido",
   "inventory.detail.addAccessibility": "Agregar {item} a los pedidos de proveedores",
@@ -5129,6 +5137,10 @@ const zhHans = {
   "inventory.detail.recentUsage": "近期使用模式",
   "inventory.detail.perDay": "每日 {unit}",
   "inventory.detail.daysCoverage": "可覆盖天数",
+  "inventory.detail.demandIntensity": "相对平时需求",
+  "inventory.detail.demandIntensity.value": "{ratio}×",
+  "inventory.detail.demandIntensity.explanation":
+    "今日已映射需求约为平时基线的 {ratio}×。高于 1.15× 通常表示需求上升；低于 0.8× 通常表示需求下降。",
   "inventory.detail.recommendation": "Mise 建议",
   "inventory.detail.addToOrder": "加入订单",
   "inventory.detail.addAccessibility": "将 {item} 加入供应商订单",

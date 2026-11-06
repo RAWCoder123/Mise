@@ -70,6 +70,7 @@ function prediction(overrides: Partial<InventoryPrediction> = {}): InventoryPred
     demandTrend: "rising",
     trendLabel: "Rising",
     suggestedOrderQuantity: 18,
+    demandIntensityRatio: 1.24,
     suggestedAction: "Order 18 lb",
     urgency: "high",
     basis: "Mapped POS demand",
