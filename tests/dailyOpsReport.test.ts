@@ -289,6 +289,7 @@ test("buildDailyOpsReport estimates dollars at risk from outlooks", () => {
       item,
       prediction: {
         averageDailyUsage: 6,
+        baselineDailyUsage: 6,
         historySampleDays: 7,
         historySource: "restaurant_history",
         todayDepletion: 6,

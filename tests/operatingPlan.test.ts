@@ -476,6 +476,7 @@ function outlook(
     },
     prediction: {
       averageDailyUsage: 10,
+      baselineDailyUsage: 8,
       historySampleDays: 14,
       historySource: "restaurant_history",
       todayDepletion: 4,

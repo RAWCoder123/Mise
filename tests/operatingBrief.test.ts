@@ -60,6 +60,7 @@ function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
 function prediction(overrides: Partial<InventoryPrediction> = {}): InventoryPrediction {
   return {
     averageDailyUsage: 20,
+    baselineDailyUsage: 16,
     historySampleDays: 28,
     historySource: "restaurant_history",
     todayDepletion: 8,
