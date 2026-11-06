@@ -260,6 +260,7 @@ function outlook(
       averageDailyUsage: 3,
       historySampleDays: 14,
       historySource: "restaurant_history",
+      mappedTodayUsage: 2,
       todayDepletion: 2,
       projectedQuantity: projectedStatus === "Critical" ? 0 : 3,
       projectedStatus,

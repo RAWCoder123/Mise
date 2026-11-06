@@ -437,6 +437,12 @@ export interface InventoryPrediction {
   averageDailyUsage: number;
   historySampleDays: number;
   historySource: "restaurant_history" | "demo_fallback" | "current_day" | "none";
+  /**
+   * Total recipe-mapped POS demand for the operating day, before the count-window
+   * split. Distinct from `todayDepletion`, which is zero when a same-day verified
+   * count already absorbed that demand into the counted baseline.
+   */
+  mappedTodayUsage: number;
   todayDepletion: number;
   projectedQuantity: number;
   projectedStatus: InventoryStatus;

@@ -478,6 +478,7 @@ function outlook(
       averageDailyUsage: 10,
       historySampleDays: 14,
       historySource: "restaurant_history",
+      mappedTodayUsage: 4,
       todayDepletion: 4,
       projectedQuantity: 4,
       projectedStatus,

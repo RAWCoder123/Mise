@@ -537,6 +537,12 @@ const en = {
   "inventory.detail.recentUsage": "Recent usage pattern",
   "inventory.detail.perDay": "{unit} per day",
   "inventory.detail.daysCoverage": "days coverage",
+  "inventory.detail.mappedTodayUsage": "mapped today",
+  "inventory.detail.mappedTodayUsage.value": "{quantity} {unit}",
+  "inventory.detail.mappedTodayUsage.explanation":
+    "Today's recipe-mapped POS demand is about {quantity} {unit}.",
+  "inventory.detail.mappedTodayUsage.explanationAbsorbed":
+    "Today's recipe-mapped POS demand is about {quantity} {unit}. A same-day verified count already absorbed that demand, so Mise is not subtracting it again from on hand.",
   "inventory.detail.recommendation": "Mise recommendation",
   "inventory.detail.addToOrder": "Add to Order",
   "inventory.detail.addAccessibility": "Add {item} to supplier orders",
@@ -2835,6 +2841,12 @@ const es = {
   "inventory.detail.recentUsage": "Patrón de uso reciente",
   "inventory.detail.perDay": "{unit} por día",
   "inventory.detail.daysCoverage": "días de cobertura",
+  "inventory.detail.mappedTodayUsage": "mapeado hoy",
+  "inventory.detail.mappedTodayUsage.value": "{quantity} {unit}",
+  "inventory.detail.mappedTodayUsage.explanation":
+    "La demanda POS mapeada por receta de hoy es cerca de {quantity} {unit}.",
+  "inventory.detail.mappedTodayUsage.explanationAbsorbed":
+    "La demanda POS mapeada por receta de hoy es cerca de {quantity} {unit}. Un conteo verificado del mismo día ya absorbió esa demanda, así que Mise no la vuelve a restar del stock.",
   "inventory.detail.recommendation": "Recomendación de Mise",
   "inventory.detail.addToOrder": "Agregar al pedido",
   "inventory.detail.addAccessibility": "Agregar {item} a los pedidos de proveedores",
@@ -5129,6 +5141,12 @@ const zhHans = {
   "inventory.detail.recentUsage": "近期使用模式",
   "inventory.detail.perDay": "每日 {unit}",
   "inventory.detail.daysCoverage": "可覆盖天数",
+  "inventory.detail.mappedTodayUsage": "今日已映射",
+  "inventory.detail.mappedTodayUsage.value": "{quantity} {unit}",
+  "inventory.detail.mappedTodayUsage.explanation":
+    "今日经配方映射的 POS 需求约为 {quantity} {unit}。",
+  "inventory.detail.mappedTodayUsage.explanationAbsorbed":
+    "今日经配方映射的 POS 需求约为 {quantity} {unit}。同日已核实盘点已吸收该需求，因此 Mise 不会再次从在库数量中扣减。",
   "inventory.detail.recommendation": "Mise 建议",
   "inventory.detail.addToOrder": "加入订单",
   "inventory.detail.addAccessibility": "将 {item} 加入供应商订单",
