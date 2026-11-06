@@ -537,6 +537,10 @@ const en = {
   "inventory.detail.recentUsage": "Recent usage pattern",
   "inventory.detail.perDay": "{unit} per day",
   "inventory.detail.daysCoverage": "days coverage",
+  "inventory.detail.expectedNearTermUsage": "next 7 days",
+  "inventory.detail.expectedNearTermUsage.value": "{quantity} {unit}",
+  "inventory.detail.expectedNearTermUsage.explanation":
+    "At the current demand rate, Mise expects about {quantity} {unit} to be used over the next seven service days.",
   "inventory.detail.recommendation": "Mise recommendation",
   "inventory.detail.addToOrder": "Add to Order",
   "inventory.detail.addAccessibility": "Add {item} to supplier orders",
@@ -2835,6 +2839,10 @@ const es = {
   "inventory.detail.recentUsage": "Patrón de uso reciente",
   "inventory.detail.perDay": "{unit} por día",
   "inventory.detail.daysCoverage": "días de cobertura",
+  "inventory.detail.expectedNearTermUsage": "próximos 7 días",
+  "inventory.detail.expectedNearTermUsage.value": "{quantity} {unit}",
+  "inventory.detail.expectedNearTermUsage.explanation":
+    "Con la demanda actual, Mise espera que se usen cerca de {quantity} {unit} en los próximos siete días de servicio.",
   "inventory.detail.recommendation": "Recomendación de Mise",
   "inventory.detail.addToOrder": "Agregar al pedido",
   "inventory.detail.addAccessibility": "Agregar {item} a los pedidos de proveedores",
@@ -5129,6 +5137,10 @@ const zhHans = {
   "inventory.detail.recentUsage": "近期使用模式",
   "inventory.detail.perDay": "每日 {unit}",
   "inventory.detail.daysCoverage": "可覆盖天数",
+  "inventory.detail.expectedNearTermUsage": "未来 7 天",
+  "inventory.detail.expectedNearTermUsage.value": "{quantity} {unit}",
+  "inventory.detail.expectedNearTermUsage.explanation":
+    "按当前需求速度，Mise 预计未来七个营业日约使用 {quantity} {unit}。",
   "inventory.detail.recommendation": "Mise 建议",
   "inventory.detail.addToOrder": "加入订单",
   "inventory.detail.addAccessibility": "将 {item} 加入供应商订单",
