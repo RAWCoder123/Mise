@@ -15,6 +15,7 @@ import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { describeLogDeliverySubmitError } from "../../services/domain/logDeliverySubmitErrorMessageIdentity";
 import {
   fetchDeliveryHistory,
   fetchInventoryItems,
@@ -252,10 +253,14 @@ export default function LogDeliveryScreen() {
         operation: "receipt",
         restaurant_id: restaurantId
       });
+      // MISE-005YH: pin Log Delivery submitError.message to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe diagnostics so the notice
+      // cannot invent a clean Error.message via Unicode String#trim and force
+      // the raw-slice branch. Leave Inventory detail's twin submitError path
+      // (#1139 / MISE-005YG), Log Delivery itemName/note/quantity tips, and
+      // inventory/orders message ?? notFound alone.
       setMessage(
-        submitError instanceof Error && submitError.message.trim()
-          ? submitError.message.slice(0, 220)
-          : t("inventory.ops.submitError")
+        describeLogDeliverySubmitError(submitError, t("inventory.ops.submitError"))
       );
       setMessageIsError(true);
     } finally {
