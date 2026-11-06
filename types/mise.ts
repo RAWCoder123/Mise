@@ -435,6 +435,12 @@ export interface AttentionCard {
 
 export interface InventoryPrediction {
   averageDailyUsage: number;
+  /**
+   * Usual mapped daily demand from restaurant history or labeled demo fallback.
+   * Distinct from blended `averageDailyUsage`, which may pull toward today.
+   * Null when contaminated or Mise has no positive baseline to report.
+   */
+  baselineDailyUsage: number | null;
   historySampleDays: number;
   historySource: "restaurant_history" | "demo_fallback" | "current_day" | "none";
   todayDepletion: number;

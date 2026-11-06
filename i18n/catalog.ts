@@ -537,6 +537,10 @@ const en = {
   "inventory.detail.recentUsage": "Recent usage pattern",
   "inventory.detail.perDay": "{unit} per day",
   "inventory.detail.daysCoverage": "days coverage",
+  "inventory.detail.baselineDailyUsage": "usual per day",
+  "inventory.detail.baselineDailyUsage.value": "{quantity} {unit}",
+  "inventory.detail.baselineDailyUsage.explanation":
+    "Usual mapped demand is about {quantity} {unit} per service day from restaurant history. The blended per-day rate above may pull toward today's sales.",
   "inventory.detail.recommendation": "Mise recommendation",
   "inventory.detail.addToOrder": "Add to Order",
   "inventory.detail.addAccessibility": "Add {item} to supplier orders",
@@ -2835,6 +2839,10 @@ const es = {
   "inventory.detail.recentUsage": "Patrón de uso reciente",
   "inventory.detail.perDay": "{unit} por día",
   "inventory.detail.daysCoverage": "días de cobertura",
+  "inventory.detail.baselineDailyUsage": "uso habitual / día",
+  "inventory.detail.baselineDailyUsage.value": "{quantity} {unit}",
+  "inventory.detail.baselineDailyUsage.explanation":
+    "La demanda mapeada habitual es cerca de {quantity} {unit} por día de servicio según el historial. La tasa diaria combinada de arriba puede inclinarse hacia las ventas de hoy.",
   "inventory.detail.recommendation": "Recomendación de Mise",
   "inventory.detail.addToOrder": "Agregar al pedido",
   "inventory.detail.addAccessibility": "Agregar {item} a los pedidos de proveedores",
@@ -5129,6 +5137,10 @@ const zhHans = {
   "inventory.detail.recentUsage": "近期使用模式",
   "inventory.detail.perDay": "每日 {unit}",
   "inventory.detail.daysCoverage": "可覆盖天数",
+  "inventory.detail.baselineDailyUsage": "平时每日用量",
+  "inventory.detail.baselineDailyUsage.value": "{quantity} {unit}",
+  "inventory.detail.baselineDailyUsage.explanation":
+    "根据门店历史，平时映射需求约为每个营业日 {quantity} {unit}。上方混合日均用量可能偏向今日销量。",
   "inventory.detail.recommendation": "Mise 建议",
   "inventory.detail.addToOrder": "加入订单",
   "inventory.detail.addAccessibility": "将 {item} 加入供应商订单",
