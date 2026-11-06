@@ -264,6 +264,7 @@ function outlook(
       projectedQuantity: projectedStatus === "Critical" ? 0 : 3,
       projectedStatus,
       daysCoverage: projectedStatus === "Critical" ? 0 : 1,
+      expectedNearTermUsage: 21,
       coverageLabel: projectedStatus === "Critical" ? "May run out today" : "Count needs review",
       demandTrend: "normal",
       trendLabel: "Normal demand",

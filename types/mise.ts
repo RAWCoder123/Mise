@@ -441,6 +441,11 @@ export interface InventoryPrediction {
   projectedQuantity: number;
   projectedStatus: InventoryStatus;
   daysCoverage: number | null;
+  /**
+   * Expected ingredient usage over the next seven service days at the current
+   * demand rate. Null when contaminated or Mise has no usable demand rate.
+   */
+  expectedNearTermUsage: number | null;
   coverageLabel: string;
   demandTrend: DemandTrend;
   trendLabel: string;

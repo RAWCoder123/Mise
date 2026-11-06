@@ -66,6 +66,7 @@ function prediction(overrides: Partial<InventoryPrediction> = {}): InventoryPred
     projectedQuantity: 7.7,
     projectedStatus: "Critical",
     daysCoverage: 0.4,
+    expectedNearTermUsage: 140,
     coverageLabel: "Under 1 service day of coverage",
     demandTrend: "rising",
     trendLabel: "Rising",

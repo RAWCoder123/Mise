@@ -482,6 +482,7 @@ function outlook(
       projectedQuantity: 4,
       projectedStatus,
       daysCoverage: 0.4,
+      expectedNearTermUsage: 70,
       coverageLabel: "Under 1 service day of coverage",
       demandTrend: "rising",
       trendLabel: "Rising",
