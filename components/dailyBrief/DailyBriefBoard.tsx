@@ -14,6 +14,7 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefBoardCompactPreviewFindingExplanation } from "../../services/domain/presentationDailyBriefBoardCompactPreviewFindingExplanationIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -103,8 +104,23 @@ export function DailyBriefBoard({
               <Text numberOfLines={1} style={styles.previewFinding}>
                 {firstFinding.title}
               </Text>
+              {/*
+                MISE-005YO: pin Daily Brief Board compact-preview
+                firstFinding.explanation to ASCII C. Soft-null / Unicode-padded
+                explanations fall through to
+                dailyBrief.compactPreview.findingExplanation.none without
+                inventing clean explanation copy from NBSP/em-space padding,
+                and without letting Unicode-only space or empty string render a
+                blank-looking previewBody. Leave compact preview title (#1146),
+                Board cardTitle (#1145), Board explanation (#1142), card header
+                a11y (#1075), action a11y (#1074), Phase Brief row a11y
+                (#1076), domain title (#920), Board recommendedAction (#1143),
+                and effectiveRecommendedAction annotation (#1144) alone.
+              */}
               <Text numberOfLines={1} style={styles.previewBody}>
-                {firstFinding.explanation}
+                {normalizeDailyBriefBoardCompactPreviewFindingExplanation(
+                  firstFinding.explanation
+                ) || t("dailyBrief.compactPreview.findingExplanation.none")}
               </Text>
             </>
           ) : (
