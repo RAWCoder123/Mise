@@ -12,6 +12,7 @@ import { RetryNotice } from "../../components/ui/StatusNotice";
 import { colors, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { describeInventoryCountSessionError } from "../../services/domain/inventoryCountSessionErrorMessageIdentity";
 import { summarizeCountSessionProgress } from "../../services/domain/inventoryCountSessions";
 import {
   presentRestaurantScopedHubActionsEditable,
@@ -134,7 +135,12 @@ export default function InventoryCountSessionScreen() {
       setNotice(t("inventory.count.started"));
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.startError"));
+      // MISE-005YI: pin Inventory count session catch Error.message to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe diagnostics so the notice
+      // cannot invent a blank or padded Error.message via the prior
+      // `instanceof Error ? caught.message` branch. Leave Inventory detail
+      // (#1139) and Log Delivery (#1140) twin submitError paths alone.
+      setError(describeInventoryCountSessionError(caught, t("inventory.count.startError")));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -191,7 +197,8 @@ export default function InventoryCountSessionScreen() {
     try {
       lines = buildCountLinePayload(visibleDetail, false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : t("inventory.count.saveError"));
+      // MISE-005YI: pin Inventory count session catch Error.message to ASCII C.
+      setError(describeInventoryCountSessionError(caught, t("inventory.count.saveError")));
       return;
     }
     if (lines.length < 1) {
@@ -209,7 +216,8 @@ export default function InventoryCountSessionScreen() {
       setNotice(t("inventory.count.saved"));
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.saveError"));
+      // MISE-005YI: pin Inventory count session catch Error.message to ASCII C.
+      setError(describeInventoryCountSessionError(caught, t("inventory.count.saveError")));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -232,7 +240,8 @@ export default function InventoryCountSessionScreen() {
       setNotice(t("inventory.count.submitted"));
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.submitError"));
+      // MISE-005YI: pin Inventory count session catch Error.message to ASCII C.
+      setError(describeInventoryCountSessionError(caught, t("inventory.count.submitError")));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -251,7 +260,8 @@ export default function InventoryCountSessionScreen() {
       setNotice(t("inventory.count.approved"));
     } catch (caught) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
-      setError(caught instanceof Error ? caught.message : t("inventory.count.approveError"));
+      // MISE-005YI: pin Inventory count session catch Error.message to ASCII C.
+      setError(describeInventoryCountSessionError(caught, t("inventory.count.approveError")));
     } finally {
       if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
     }
@@ -278,7 +288,10 @@ export default function InventoryCountSessionScreen() {
               setNotice(t("inventory.count.cancelled"));
             } catch (caught) {
               if (activeRestaurantIdRef.current !== restaurantId) return;
-              setError(caught instanceof Error ? caught.message : t("inventory.count.cancelError"));
+              // MISE-005YI: pin Inventory count session catch Error.message to ASCII C.
+              setError(
+                describeInventoryCountSessionError(caught, t("inventory.count.cancelError"))
+              );
             } finally {
               if (activeRestaurantIdRef.current === restaurantId) setSaving(false);
             }
