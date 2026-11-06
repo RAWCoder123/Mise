@@ -27,6 +27,7 @@ import type {
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
+import { normalizeHomeStatusWhyItMatters } from "../../services/domain/homeStatusWhyItMattersIdentity";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
   classifyOperationalTodayTaskTiming,
@@ -341,6 +342,18 @@ function RestaurantStatusCard({
   const topRisk = brief.restaurantStatus.topRisk?.trim();
   const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
+  // MISE-005YD: pin Home StatusNotice primaryApproval.whyItMatters to ASCII C.
+  // Soft-null empty / Unicode-padded / unsafe why copy so the StatusNotice
+  // message falls through to brief.restaurantStatus.summary without inventing
+  // clean reason equality via Unicode String#trim. Prior `??` path let
+  // non-nullish Unicode-only space or empty string render a blank-looking
+  // StatusNotice message and block the restaurant-status summary fallback.
+  // Leave StatusNotice approval titles (#1011), ApprovalsSection whyItMatters
+  // (#1135), card.title (#1049), recommendedAction (#1134), and Home greeting
+  // restaurant.name (#1044) alone on this tip.
+  const approvalWhyItMatters = normalizeHomeStatusWhyItMatters(
+    primaryApproval?.whyItMatters
+  );
 
   return (
     <StatusNotice
@@ -351,7 +364,7 @@ function RestaurantStatusCard({
           ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
           : primaryApproval?.title || t(statusKey)
       }
-      message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
+      message={topRisk ? t(statusKey) : approvalWhyItMatters || brief.restaurantStatus.summary}
       onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
     />
   );
