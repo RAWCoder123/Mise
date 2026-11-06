@@ -2,7 +2,7 @@
 
 Date: 2026-11-06  
 Branch: `cursor/mise-baseline-daily-usage-main`  
-PR: (opened by automation)
+PR: https://github.com/RAWCoder123/Mise/pull/1131
 
 ## Summary
 
