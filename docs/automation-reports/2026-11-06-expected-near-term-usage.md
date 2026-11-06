@@ -2,7 +2,7 @@
 
 Date: 2026-11-06  
 Branch: `cursor/mise-expected-near-term-usage-main`  
-PR: (pending)
+PR: https://github.com/RAWCoder123/Mise/pull/1128
 
 ## Summary
 
