@@ -34,6 +34,7 @@ import { formatQuantity, nextDateKeyInTimeZone, toDateKeyInTimeZone } from "../.
 import { getInventoryStatus, getInventoryStatusForQuantity } from "../../utils/inventory";
 import { ORDER_MESSAGE_MAX_BYTES, truncateUtf8 } from "./securityLimits";
 import { inventoryUnitsAreCompatible } from "./inventoryUnits";
+import { computeWasteRiskProbability } from "./wasteRiskProbability";
 import {
   dayResolutionConsumptionIsAfterCount,
   missingInventoryCountEvidence,
@@ -513,6 +514,11 @@ export function buildInventoryPrediction(
       : "Recommendation is based on current par level until enough sales history builds up.";
   const whyItMatters = getWhyItMatters(safeItem, daysCoverage, demandTrend, recentUsage, projectedQuantity);
   const recommendationCopy = getRecommendationCopy(safeItem, suggestedOrderQuantity, coverageLabel, demandTrend, projectedStatus, recentUsage);
+  const wasteRiskProbability = computeWasteRiskProbability({
+    projectedQuantity,
+    averageDailyUsage,
+    contaminatedProjection
+  });
 
   return {
     averageDailyUsage,
@@ -526,6 +532,7 @@ export function buildInventoryPrediction(
     demandTrend,
     trendLabel,
     suggestedOrderQuantity,
+    wasteRiskProbability,
     suggestedAction,
     urgency,
     basis,
