@@ -27,6 +27,7 @@ import type {
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
+import { normalizeHomeStatusRestaurantSummary } from "../../services/domain/homeStatusRestaurantSummaryIdentity";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
   classifyOperationalTodayTaskTiming,
@@ -341,6 +342,19 @@ function RestaurantStatusCard({
   const topRisk = brief.restaurantStatus.topRisk?.trim();
   const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
+  // MISE-005YE: pin Home StatusNotice restaurantStatus.summary to ASCII C.
+  // Soft-null empty / Unicode-padded / unsafe summary copy so the StatusNotice
+  // message falls through to t(statusKey) without inventing clean summary
+  // equality via Unicode String#trim. Prior raw-summary path let non-nullish
+  // Unicode-only space or empty string render a blank-looking StatusNotice
+  // message with no intentional localized status-sentence fallback. Leave
+  // StatusNotice whyItMatters (#1136), ApprovalsSection whyItMatters (#1135),
+  // recommendedAction (#1134), card.title (#1049), StatusNotice approval
+  // titles (#1011), Home greeting restaurant.name (#1044), and the
+  // topRisk?.trim() message gate alone on this tip.
+  const restaurantStatusSummary = normalizeHomeStatusRestaurantSummary(
+    brief.restaurantStatus.summary
+  );
 
   return (
     <StatusNotice
@@ -351,7 +365,11 @@ function RestaurantStatusCard({
           ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
           : primaryApproval?.title || t(statusKey)
       }
-      message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
+      message={
+        topRisk
+          ? t(statusKey)
+          : primaryApproval?.whyItMatters ?? restaurantStatusSummary ?? t(statusKey)
+      }
       onPress={() => router.push(primaryApproval ? "/orders" : "/today")}
     />
   );
