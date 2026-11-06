@@ -1,7 +1,8 @@
 # Demand intensity ratio on inventory predictions
 
 Date: 2026-11-06  
-Branch: `cursor/mise-demand-intensity-ratio-main`
+Branch: `cursor/mise-demand-intensity-ratio-main`  
+PR: https://github.com/RAWCoder123/Mise/pull/1130
 
 ## Summary
 
