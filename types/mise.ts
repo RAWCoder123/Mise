@@ -445,6 +445,12 @@ export interface InventoryPrediction {
   demandTrend: DemandTrend;
   trendLabel: string;
   suggestedOrderQuantity: number;
+  /**
+   * Scannable order quantity when Mise is recommending a buy (Critical/Low).
+   * Null when contaminated or when no order is warranted, so the detail fact
+   * never invents a purchase size beside coverage.
+   */
+  suggestedOrderQuantityFact: number | null;
   suggestedAction: string;
   urgency: Urgency;
   basis: string;

@@ -486,6 +486,7 @@ function outlook(
       demandTrend: "rising",
       trendLabel: "Rising",
       suggestedOrderQuantity: 12,
+      suggestedOrderQuantityFact: 12,
       suggestedAction: "Order 12 lb",
       urgency: "high",
       basis: "Mapped POS demand",

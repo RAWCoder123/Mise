@@ -537,6 +537,10 @@ const en = {
   "inventory.detail.recentUsage": "Recent usage pattern",
   "inventory.detail.perDay": "{unit} per day",
   "inventory.detail.daysCoverage": "days coverage",
+  "inventory.detail.suggestedOrderQuantity": "suggested order",
+  "inventory.detail.suggestedOrderQuantity.value": "{quantity} {unit}",
+  "inventory.detail.suggestedOrderQuantity.explanation":
+    "Mise suggests ordering {quantity} {unit} to restore par from the current projected on-hand. Contaminated counts and healthy coverage hide this quantity so Mise does not invent a buy.",
   "inventory.detail.recommendation": "Mise recommendation",
   "inventory.detail.addToOrder": "Add to Order",
   "inventory.detail.addAccessibility": "Add {item} to supplier orders",
@@ -2835,6 +2839,10 @@ const es = {
   "inventory.detail.recentUsage": "Patrón de uso reciente",
   "inventory.detail.perDay": "{unit} por día",
   "inventory.detail.daysCoverage": "días de cobertura",
+  "inventory.detail.suggestedOrderQuantity": "pedido sugerido",
+  "inventory.detail.suggestedOrderQuantity.value": "{quantity} {unit}",
+  "inventory.detail.suggestedOrderQuantity.explanation":
+    "Mise sugiere pedir {quantity} {unit} para volver al par según el inventario proyectado. Los conteos contaminados y una cobertura saludable ocultan esta cantidad para no inventar una compra.",
   "inventory.detail.recommendation": "Recomendación de Mise",
   "inventory.detail.addToOrder": "Agregar al pedido",
   "inventory.detail.addAccessibility": "Agregar {item} a los pedidos de proveedores",
@@ -5129,6 +5137,10 @@ const zhHans = {
   "inventory.detail.recentUsage": "近期使用模式",
   "inventory.detail.perDay": "每日 {unit}",
   "inventory.detail.daysCoverage": "可覆盖天数",
+  "inventory.detail.suggestedOrderQuantity": "建议订货量",
+  "inventory.detail.suggestedOrderQuantity.value": "{quantity} {unit}",
+  "inventory.detail.suggestedOrderQuantity.explanation":
+    "根据当前预计库存，Mise 建议订购 {quantity} {unit} 以恢复至标准存量。污染的盘点或健康的覆盖天数会隐藏该数量，避免凭空给出采购量。",
   "inventory.detail.recommendation": "Mise 建议",
   "inventory.detail.addToOrder": "加入订单",
   "inventory.detail.addAccessibility": "将 {item} 加入供应商订单",
