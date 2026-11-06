@@ -445,6 +445,12 @@ export interface InventoryPrediction {
   demandTrend: DemandTrend;
   trendLabel: string;
   suggestedOrderQuantity: number;
+  /**
+   * Deterministic 0–1 confidence for this projection from demand history and
+   * verified-count freshness. Null when a contaminated projection must not
+   * invent confidence. Capped below 1 so Mise never claims certainty.
+   */
+  forecastConfidence: number | null;
   suggestedAction: string;
   urgency: Urgency;
   basis: string;
