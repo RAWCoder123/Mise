@@ -27,6 +27,7 @@ import type {
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
+import { normalizeHomeStatusTopRisk } from "../../services/domain/homeStatusTopRiskIdentity";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
   classifyOperationalTodayTaskTiming,
@@ -338,7 +339,16 @@ function RestaurantStatusCard({
   // Breast" — and keeps the status word as the qualifier. `topRisk` is the
   // brief's own pick for the single most pressing issue, so lead with it and
   // only fall back to the generic status sentence when it has nothing.
-  const topRisk = brief.restaurantStatus.topRisk?.trim();
+  // MISE-005YF: pin Home StatusNotice restaurantStatus.topRisk to ASCII C.
+  // Soft-null empty / Unicode-padded / unsafe topRisk copy so the StatusNotice
+  // message gate cannot invent clean presence via Unicode String#trim and force
+  // t(statusKey). Prior `.trim()` path let em-space-padded topRisk invent gate
+  // equality and skip the intentional why-it-matters / summary fallthrough.
+  // Leave StatusNotice summary (#1137), StatusNotice whyItMatters (#1136),
+  // ApprovalsSection whyItMatters (#1135), recommendedAction (#1134),
+  // card.title (#1049), StatusNotice approval titles (#1011), and Home
+  // greeting restaurant.name (#1044) alone on this tip.
+  const topRisk = normalizeHomeStatusTopRisk(brief.restaurantStatus.topRisk);
   const primaryMenuRisk = brief.outlook.menuRisks[0];
   const primaryApproval = brief.needsApproval[0];
 
