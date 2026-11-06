@@ -22,6 +22,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import { describeInventoryDetailSubmitError } from "../../services/domain/inventoryDetailSubmitErrorMessageIdentity";
 import {
   addInventoryItemToOrder,
   fetchInventoryItemOutlook,
@@ -251,10 +252,13 @@ export default function InventoryDetailScreen() {
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
     } catch (submitError) {
       if (activeRestaurantIdRef.current !== restaurantId) return;
+      // MISE-005YG: pin Inventory detail submitError.message to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe diagnostics so the notice
+      // cannot invent a clean Error.message via Unicode String#trim and force
+      // the raw-slice branch. Leave Log Delivery's twin submitError path,
+      // settings/add localized catches, and message ?? notFound alone.
       setMessage(
-        submitError instanceof Error && submitError.message.trim()
-          ? submitError.message.slice(0, 220)
-          : t("inventory.ops.submitError")
+        describeInventoryDetailSubmitError(submitError, t("inventory.ops.submitError"))
       );
       setMessageIsError(true);
     } finally {
