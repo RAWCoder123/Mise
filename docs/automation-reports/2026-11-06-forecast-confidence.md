@@ -1,7 +1,8 @@
 # Forecast confidence on inventory predictions
 
 Date: 2026-11-06  
-Branch: `cursor/mise-forecast-confidence-main`
+Branch: `cursor/mise-forecast-confidence-main`  
+PR: https://github.com/RAWCoder123/Mise/pull/1126
 
 ## Summary
 
