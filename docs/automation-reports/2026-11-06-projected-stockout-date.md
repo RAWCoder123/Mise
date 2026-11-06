@@ -29,12 +29,13 @@ Lead time / MOQ / safety stock / shelf life / delivery schedule / order-by date
 
 ## Verification
 
-- `npm run typecheck`
-- Focused `tests/projectedStockoutDate.test.ts`
-- `npm test`
-- `npm run security:static` / `security:backend` / `design:static`
+- `npm run typecheck` pass
+- Focused `tests/projectedStockoutDate.test.ts` 5/5
+- `npm test` 688 pass / 0 fail / 0 cancelled
+- `npm run security:static` / `security:backend` / `design:static` pass
 
 ## Notes
 
-- Alone-OK on current `origin/main`
+- Alone-OK on current `origin/main` (`78da7376`)
 - Ordinary UI conflicts possible with #1116–#1123 inventory detail stacks
+- PR: https://github.com/RAWCoder123/Mise/pull/1124 @ `9347af47`
