@@ -268,6 +268,7 @@ function outlook(
       demandTrend: "normal",
       trendLabel: "Normal demand",
       suggestedOrderQuantity: 18,
+      wasteRiskProbability: null,
       suggestedAction: projectedStatus === "Watch" ? "Update count before ordering" : "Order 18 lb",
       urgency: projectedStatus === "Critical" ? "high" : projectedStatus === "Low" ? "medium" : "low",
       basis: "Restaurant history",

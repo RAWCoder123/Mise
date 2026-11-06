@@ -467,11 +467,32 @@ export default function InventoryDetailScreen() {
                 </Text>
                 <Text style={styles.factLabel}>{t("inventory.detail.daysCoverage")}</Text>
               </View>
+              <View style={styles.fact}>
+                <Text style={styles.factValue}>
+                  {prediction.wasteRiskProbability === null
+                    ? "—"
+                    : t("inventory.detail.wasteRiskProbability.value", {
+                        percent: formatNumber(prediction.wasteRiskProbability * 100, {
+                          maximumFractionDigits: 0
+                        })
+                      })}
+                </Text>
+                <Text style={styles.factLabel}>{t("inventory.detail.wasteRiskProbability")}</Text>
+              </View>
             </View>
             <View style={styles.recommendationBox}>
               <Text style={styles.kicker}>{t("inventory.detail.recommendation")}</Text>
               <Text style={styles.recommendation}>{localizedPrediction.recommendation}</Text>
               <Text style={styles.copy}>{localizedPrediction.whyItMatters}</Text>
+              {prediction.wasteRiskProbability !== null ? (
+                <Text style={styles.copy}>
+                  {t("inventory.detail.wasteRiskProbability.explanation", {
+                    percent: formatNumber(prediction.wasteRiskProbability * 100, {
+                      maximumFractionDigits: 0
+                    })
+                  })}
+                </Text>
+              ) : null}
             </View>
             {mutationAllowed ? (
               <Button

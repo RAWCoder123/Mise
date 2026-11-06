@@ -445,6 +445,13 @@ export interface InventoryPrediction {
   demandTrend: DemandTrend;
   trendLabel: string;
   suggestedOrderQuantity: number;
+  /**
+   * Chance projected coverage exceeds the eight-day safe holding window at the
+   * current demand rate (0–1). Null when Mise must not invent a rate (no demand
+   * rate or contaminated projection). Complements stockout risk for overstock /
+   * waste pressure without requiring shelf-life metadata.
+   */
+  wasteRiskProbability: number | null;
   suggestedAction: string;
   urgency: Urgency;
   basis: string;
