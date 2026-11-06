@@ -259,6 +259,7 @@ function outlook(
     prediction: {
       averageDailyUsage: 3,
       historySampleDays: 14,
+      historySampleDaysFact: 14,
       historySource: "restaurant_history",
       todayDepletion: 2,
       projectedQuantity: projectedStatus === "Critical" ? 0 : 3,
