@@ -14,6 +14,7 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefBoardFindingTitle } from "../../services/domain/presentationDailyBriefBoardFindingTitleIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -236,7 +237,19 @@ function FindingCard({
         accessibilityRole="header"
         accessibilityLabel={`${finding.title}. ${severityLabel}`}
       >
-        {finding.title}
+        {/*
+          MISE-005YM: pin Daily Brief Board finding.title to ASCII C.
+          Soft-null / Unicode-padded titles fall through to
+          dailyBrief.findingTitle.none without inventing clean title copy from
+          NBSP/em-space padding, and without letting Unicode-only space or
+          empty string render a blank-looking cardTitle. Leave card header a11y
+          (#1075), action a11y (#1074), Phase Brief row a11y (#1076), domain
+          title (#920), Board explanation (#1142), Board recommendedAction
+          (#1143), effectiveRecommendedAction annotation (#1144), and compact
+          preview title alone.
+        */}
+        {normalizeDailyBriefBoardFindingTitle(finding.title) ||
+          t("dailyBrief.findingTitle.none")}
       </Text>
       <Text style={styles.cardBody}>{finding.explanation}</Text>
       <Text style={styles.meta}>
