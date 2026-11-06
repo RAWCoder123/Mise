@@ -445,6 +445,12 @@ export interface InventoryPrediction {
   demandTrend: DemandTrend;
   trendLabel: string;
   suggestedOrderQuantity: number;
+  /**
+   * Today's mapped POS demand divided by the historical baseline rate.
+   * `1` matches usual demand; null when contaminated or no positive baseline
+   * exists so Mise must not invent intensity from a single day alone.
+   */
+  demandIntensityRatio: number | null;
   suggestedAction: string;
   urgency: Urgency;
   basis: string;
