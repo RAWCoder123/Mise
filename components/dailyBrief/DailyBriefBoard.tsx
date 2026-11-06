@@ -14,6 +14,7 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefBoardCompactPreviewFindingTitle } from "../../services/domain/presentationDailyBriefBoardCompactPreviewFindingTitleIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -100,8 +101,21 @@ export function DailyBriefBoard({
           </View>
           {firstFinding ? (
             <>
+              {/*
+                MISE-005YN: pin Daily Brief Board compact-preview
+                firstFinding.title to ASCII C. Soft-null / Unicode-padded
+                titles fall through to dailyBrief.compactPreview.findingTitle.none
+                without inventing clean title copy from NBSP/em-space padding,
+                and without letting Unicode-only space or empty string render a
+                blank-looking previewFinding. Leave Board cardTitle (#1145),
+                card header a11y (#1075), action a11y (#1074), Phase Brief row
+                a11y (#1076), domain title (#920), compact preview explanation,
+                Board explanation (#1142), Board recommendedAction (#1143), and
+                effectiveRecommendedAction annotation (#1144) alone.
+              */}
               <Text numberOfLines={1} style={styles.previewFinding}>
-                {firstFinding.title}
+                {normalizeDailyBriefBoardCompactPreviewFindingTitle(firstFinding.title) ||
+                  t("dailyBrief.compactPreview.findingTitle.none")}
               </Text>
               <Text numberOfLines={1} style={styles.previewBody}>
                 {firstFinding.explanation}
