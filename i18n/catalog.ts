@@ -537,6 +537,10 @@ const en = {
   "inventory.detail.recentUsage": "Recent usage pattern",
   "inventory.detail.perDay": "{unit} per day",
   "inventory.detail.daysCoverage": "days coverage",
+  "inventory.detail.forecastConfidence": "forecast confidence",
+  "inventory.detail.forecastConfidence.value": "{percent}%",
+  "inventory.detail.forecastConfidence.explanation":
+    "Mise is about {percent}% confident in this projection from demand history and count freshness. Limited history or older counts lower confidence.",
   "inventory.detail.recommendation": "Mise recommendation",
   "inventory.detail.addToOrder": "Add to Order",
   "inventory.detail.addAccessibility": "Add {item} to supplier orders",
@@ -2835,6 +2839,10 @@ const es = {
   "inventory.detail.recentUsage": "Patrón de uso reciente",
   "inventory.detail.perDay": "{unit} por día",
   "inventory.detail.daysCoverage": "días de cobertura",
+  "inventory.detail.forecastConfidence": "confianza del pronóstico",
+  "inventory.detail.forecastConfidence.value": "{percent}%",
+  "inventory.detail.forecastConfidence.explanation":
+    "Mise tiene cerca de {percent}% de confianza en esta proyección según el historial de demanda y la frescura del conteo. Un historial limitado o conteos antiguos bajan la confianza.",
   "inventory.detail.recommendation": "Recomendación de Mise",
   "inventory.detail.addToOrder": "Agregar al pedido",
   "inventory.detail.addAccessibility": "Agregar {item} a los pedidos de proveedores",
@@ -5129,6 +5137,10 @@ const zhHans = {
   "inventory.detail.recentUsage": "近期使用模式",
   "inventory.detail.perDay": "每日 {unit}",
   "inventory.detail.daysCoverage": "可覆盖天数",
+  "inventory.detail.forecastConfidence": "预测置信度",
+  "inventory.detail.forecastConfidence.value": "{percent}%",
+  "inventory.detail.forecastConfidence.explanation":
+    "Mise 对本预测约有 {percent}% 的把握，依据需求历史与盘点新鲜度。历史不足或盘点过旧会降低置信度。",
   "inventory.detail.recommendation": "Mise 建议",
   "inventory.detail.addToOrder": "加入订单",
   "inventory.detail.addAccessibility": "将 {item} 加入供应商订单",
