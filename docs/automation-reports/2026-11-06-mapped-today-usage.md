@@ -1,5 +1,7 @@
 # Mapped today usage (2026-11-06)
 
+PR: https://github.com/RAWCoder123/Mise/pull/1132
+
 ## Summary
 
 Inventory predictions now expose `mappedTodayUsage` as a structured fact: the
