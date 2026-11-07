@@ -1,5 +1,6 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
+import { normalizeAskMiseAnswerTaskTitle } from "../domain/presentationAskMiseAnswerTaskTitleIdentity";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
@@ -87,7 +88,17 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const prepInsights = insights.filter((insight) => insight.insight_type === "prep" || insight.insight_type === "sales");
   const wasteInsights = insights.filter((insight) => insight.insight_type === "waste");
   const attentionTitles = summary.attentionCards.slice(0, 3).map((card) => card.title);
-  const topTaskTitles = priorities.map((task) => presentOperationalTodayTask(helpers.locale, task).title);
+  // MISE-005ZF: pin Ask Mise answer-text topTaskTitles to ASCII C.
+  // Soft-null empty / Unicode-padded / unsafe titles to ask.answer.taskTitle.none
+  // without inventing clean title copy via Unicode trim on the descriptor-absent
+  // task.title pass-through path. Leave Ask Mise priority-card display (#1163),
+  // Home HomeTaskRow (#1162), Timeline display (#1161) / a11y (#1077), Task detail
+  // operational (#1160), and presentation.detail alone.
+  const topTaskTitles = priorities.map(
+    (task) =>
+      normalizeAskMiseAnswerTaskTitle(presentOperationalTodayTask(helpers.locale, task).title) ||
+      t("ask.answer.taskTitle.none")
+  );
   const topSale = summary.topItems[0]?.item_name?.trim() || null;
 
   const thinkingSteps = buildThinkingSteps({
