@@ -36,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeInsightsMemoryLabel } from "../../services/domain/presentationInsightsMemoryLabelIdentity";
 import {
   presentInsight,
   presentLearningMemory,
@@ -931,7 +932,19 @@ function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
         <View style={styles.evidenceTriggerCopy}>
           <Text style={styles.evidenceTitle}>{t("insights.memory.title")}</Text>
           <Text style={styles.evidenceSubtitle}>
-            {t("insights.memory.subtitle", { label: presentation.label, score: formatNumber(memory.score) })}
+            {/* MISE-005ZK: pin How-Mise-knows memory subtitle presentation.label
+                display to ASCII C. Soft-null empty / Unicode-padded / unsafe
+                values to insights.memory.label.none without inventing clean
+                label copy via Unicode trim. Leave EvidenceRow signal.label
+                (#1167), signal.value (#1168), signal.detail (#1166), Task
+                detail operational title (#1160), and Home HomeTaskRow title
+                (#1162) alone. */}
+            {t("insights.memory.subtitle", {
+              label:
+                normalizeInsightsMemoryLabel(presentation.label) ||
+                t("insights.memory.label.none"),
+              score: formatNumber(memory.score)
+            })}
           </Text>
         </View>
         {expanded ? (
