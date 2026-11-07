@@ -37,6 +37,7 @@ import type {
   DailyPhaseFinding,
   DailyPhaseFindingTone
 } from "../../services/domain/dailyPhaseBrief";
+import { normalizeDailyPhaseBriefFindingTitleDisplay } from "../../services/domain/presentationDailyPhaseBriefFindingTitleDisplayIdentity";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -245,6 +246,7 @@ function FindingRow({
   index: number;
   onPress?: () => void;
 }) {
+  const { t } = useLocale();
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
@@ -263,7 +265,18 @@ function FindingRow({
         )}
       </View>
       <View style={styles.findingCopy}>
-        <Text style={styles.findingTitle}>{finding.title}</Text>
+        <Text style={styles.findingTitle}>
+          {/*
+            MISE-005YX: pin Daily Phase Brief FindingRow finding.title display
+            to ASCII C. Soft-null empty / Unicode-padded / unsafe titles to
+            dailyPhaseBrief.findingTitle.none without inventing clean display
+            copy via Unicode trim. Leaves finding-row a11y finding.title
+            (#1076), finding.interpretation a11y (#1085), finding.interpretation
+            display Text, and Daily Brief Board finding.title (#1145) alone.
+          */}
+          {normalizeDailyPhaseBriefFindingTitleDisplay(finding.title) ||
+            t("dailyPhaseBrief.findingTitle.none")}
+        </Text>
         <Text style={styles.findingBody}>{finding.interpretation}</Text>
       </View>
       {onPress ? (
