@@ -37,6 +37,7 @@ import type {
   DailyPhaseFinding,
   DailyPhaseFindingTone
 } from "../../services/domain/dailyPhaseBrief";
+import { normalizeDailyPhaseBriefFindingInterpretationDisplay } from "../../services/domain/presentationDailyPhaseBriefFindingInterpretationDisplayIdentity";
 import { captureMiseError } from "../../services/telemetry";
 
 function BackAction() {
@@ -245,6 +246,7 @@ function FindingRow({
   index: number;
   onPress?: () => void;
 }) {
+  const { t } = useLocale();
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
@@ -264,7 +266,19 @@ function FindingRow({
       </View>
       <View style={styles.findingCopy}>
         <Text style={styles.findingTitle}>{finding.title}</Text>
-        <Text style={styles.findingBody}>{finding.interpretation}</Text>
+        <Text style={styles.findingBody}>
+          {/*
+            MISE-005YY: pin Daily Phase Brief FindingRow finding.interpretation
+            display to ASCII C. Soft-null empty / Unicode-padded / unsafe
+            interpretations to dailyPhaseBrief.findingInterpretation.none
+            without inventing clean display copy via Unicode trim. Multiline
+            operator_note allowlist (LF/TAB/CR). Leaves finding-row a11y
+            interpretation (#1085), finding.title display (#1156), finding.title
+            a11y (#1076), and Daily Brief Board explanation (#1142) alone.
+          */}
+          {normalizeDailyPhaseBriefFindingInterpretationDisplay(finding.interpretation) ||
+            t("dailyPhaseBrief.findingInterpretation.none")}
+        </Text>
       </View>
       {onPress ? (
         <ChevronRight size={density.chevron} color={colors.faint} strokeWidth={iconStroke} />
