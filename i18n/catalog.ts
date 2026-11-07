@@ -1556,6 +1556,7 @@ const en = {
   "home.health.mostly": "Mostly healthy, with watch and reorder signals highlighted.",
   "home.tasks.title": "Top tasks",
   "home.tasks.empty": "No operational work is waiting right now.",
+  "home.tasks.row.title.none": "Task",
   "home.task.accessibility": "{title}. {time}. Open task.",
 
   "today.subtitle": "Daily operating plan",
@@ -3854,6 +3855,7 @@ const es = {
   "home.health.mostly": "Mayormente saludable, con señales de vigilancia y reposición destacadas.",
   "home.tasks.title": "Tareas principales",
   "home.tasks.empty": "No hay trabajo operativo en espera ahora mismo.",
+  "home.tasks.row.title.none": "Tarea",
   "home.task.accessibility": "{title}. {time}. Abrir tarea.",
 
   "today.subtitle": "Plan operativo del día",
@@ -6148,6 +6150,7 @@ const zhHans = {
   "home.health.mostly": "总体健康，需关注和补货的信号已标出。",
   "home.tasks.title": "重点任务",
   "home.tasks.empty": "目前没有等待处理的运营工作。",
+  "home.tasks.row.title.none": "任务",
   "home.task.accessibility": "{title}。{time}。打开任务。",
 
   "today.subtitle": "今日运营计划",
