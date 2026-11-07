@@ -20,6 +20,7 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivityRowTitle } from "../../services/domain/presentationActivityRowTitleIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -171,7 +172,15 @@ export default function ActivityHistoryScreen() {
               <View style={styles.copy}>
                 <View style={styles.titleRow}>
                   <Text style={styles.title} numberOfLines={expanded ? undefined : 2}>
-                    {event.title}
+                    {/*
+                      MISE-005YP: pin Activity row event.title to ASCII C.
+                      Soft-null empty / Unicode-padded / unsafe titles to
+                      activity.row.title.none without inventing clean title
+                      copy via Unicode trim. Leave expand a11y title (#1071),
+                      Home ActivityRow event.title, and event.summary alone.
+                    */}
+                    {normalizeActivityRowTitle(event.title) ||
+                      t("activity.row.title.none")}
                   </Text>
                   {event.requiresAttention ? (
                     <Badge tone="danger" label={t("activity.attention")} />
