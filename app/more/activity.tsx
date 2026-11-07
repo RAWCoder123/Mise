@@ -20,8 +20,10 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivityRowSummary } from "../../services/domain/presentationActivityRowSummaryIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
+
 
 const dateRanges: ActivityDateRange[] = ["all", "today", "yesterday", "this_week"];
 
@@ -183,7 +185,17 @@ export default function ActivityHistoryScreen() {
                   )}
                 </View>
                 <Text style={styles.summary} numberOfLines={expanded ? undefined : 3}>
-                  {event.summary}
+                  {/*
+                    MISE-005YR: pin Activity row event.summary to ASCII C.
+                    Soft-null empty / Unicode-padded / unsafe summaries to
+                    activity.row.summary.none without inventing clean summary
+                    copy via Unicode trim. Leave Activity row event.title
+                    (#1148), Home ActivityRow event.title (#1149), Home
+                    ActivityRow event.summary, and expand a11y title (#1071)
+                    alone.
+                  */}
+                  {normalizeActivityRowSummary(event.summary) ||
+                    t("activity.row.summary.none")}
                 </Text>
                 <Text style={styles.meta} numberOfLines={1}>
                   {event.category}
