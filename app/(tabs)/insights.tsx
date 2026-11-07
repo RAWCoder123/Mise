@@ -36,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeInsightsSignalLabel } from "../../services/domain/presentationInsightsSignalLabelIdentity";
 import {
   presentInsight,
   presentLearningMemory,
@@ -959,7 +960,7 @@ function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
 }
 
 function EvidenceRow({ signal, divided }: { signal: LearningMemorySignal; divided: boolean }) {
-  const { locale } = useLocale();
+  const { locale, t } = useLocale();
   const presentation = presentLearningMemorySignal(locale, signal);
   const isPositive = signal.tone === "leaf";
   const needsAttention = signal.tone === "brand" || signal.tone === "warning";
@@ -968,7 +969,16 @@ function EvidenceRow({ signal, divided }: { signal: LearningMemorySignal; divide
     <View style={[styles.signalRow, divided && styles.dividedRow]}>
       <View style={[styles.signalDot, isPositive && styles.signalDotPositive, needsAttention && styles.signalDotAttention]} />
       <View style={styles.signalCopy}>
-        <Text style={styles.signalLabel}>{presentation.label}</Text>
+        <Text style={styles.signalLabel}>
+          {/* MISE-005ZI: pin Insights signal presentation.label display to
+              ASCII C. Soft-null empty / Unicode-padded / unsafe labels to
+              insights.signal.label.none without inventing clean label copy
+              via Unicode trim. Leave presentation.detail (#1166),
+              presentation.value, and How-Mise-knows memory subtitle label
+              alone. */}
+          {normalizeInsightsSignalLabel(presentation.label) ||
+            t("insights.signal.label.none")}
+        </Text>
         <Text style={styles.signalDetail}>{presentation.detail}</Text>
       </View>
       <Text style={[styles.signalValue, isPositive && styles.signalValuePositive, needsAttention && styles.signalValueAttention]}>
