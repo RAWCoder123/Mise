@@ -12,6 +12,7 @@ import { colors, conceptTypography, icon, iconStroke, radii } from "../../consta
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { RestaurantMemory } from "../../services/domain/restaurantMemory";
+import { normalizeRestaurantMemoryEvidenceSummary } from "../../services/domain/presentationRestaurantMemoryEvidenceSummaryIdentity";
 import {
   convertRestaurantMemoryToSafeRule,
   fetchRestaurantMemories,
@@ -201,7 +202,17 @@ export default function RestaurantMemoryScreen() {
                 <Text style={styles.evidenceTitle}>{t("memory.evidence.title")}</Text>
                 {memory.evidence.slice(0, 4).map((entry) => (
                   <Text key={`${entry.type}:${entry.id}`} style={styles.evidenceLine}>
-                    {entry.summary}
+                    {/*
+                      MISE-005YV: pin Restaurant Memory evidence entry.summary
+                      to ASCII C. Soft-null empty / Unicode-padded / unsafe
+                      summaries to memory.evidence.summary.none without
+                      inventing clean evidence copy via Unicode trim. Leave
+                      memory.statement (#830), correction draft (#848),
+                      scope/source (#841), Memory subtitle restaurant.name
+                      (#1042), and Activity expanded evidence.summary alone.
+                    */}
+                    {normalizeRestaurantMemoryEvidenceSummary(entry.summary) ||
+                      t("memory.evidence.summary.none")}
                     {" · "}
                     {formatDate(entry.observedAt, { dateStyle: "medium" })}
                   </Text>
