@@ -14,6 +14,7 @@ import { colors, conceptTypography, icon, iconStroke, typography } from "../../c
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import { normalizeTaskDetailSharedTitle } from "../../services/domain/presentationTaskDetailSharedTitleIdentity";
 import {
   canRestaurantRoleCompleteSharedTask,
   type RestaurantTask
@@ -263,7 +264,17 @@ export default function TaskDetailScreen() {
               />
             )}
             <View style={styles.heroCopy}>
-              <Text style={styles.title}>{sharedTask.title}</Text>
+              <Text style={styles.title}>
+                {/*
+                  MISE-005ZA: pin Task detail sharedTask.title display to ASCII C.
+                  Soft-null empty / Unicode-padded / unsafe titles to
+                  tasks.shared.title.none without inventing clean title copy via
+                  Unicode trim. Leave Create Task list/choice tips (#1152/#1153),
+                  domain writer (#822), and operational presentation.title alone.
+                */}
+                {normalizeTaskDetailSharedTitle(sharedTask.title) ||
+                  t("tasks.shared.title.none")}
+              </Text>
               <View style={styles.inlineBadges}>
                 <Badge label={t("tasks.shared.restaurantWide")} tone="neutral" />
                 <Badge
