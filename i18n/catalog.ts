@@ -1609,6 +1609,7 @@ const en = {
   "today.floorNotes.completeError": "Task could not be marked done.",
 
   "tasks.title": "Task detail",
+  "tasks.operational.title.none": "Task",
   "tasks.noRestaurant.title": "No restaurant workspace",
   "tasks.noRestaurant.body": "Open a restaurant before reviewing task details.",
   "tasks.error": "Task detail could not load.",
@@ -3907,6 +3908,7 @@ const es = {
   "today.floorNotes.completeError": "No se pudo marcar la tarea como hecha.",
 
   "tasks.title": "Detalle de la tarea",
+  "tasks.operational.title.none": "Tarea",
   "tasks.noRestaurant.title": "Sin espacio de trabajo",
   "tasks.noRestaurant.body": "Abre un restaurante antes de revisar los detalles de la tarea.",
   "tasks.error": "El detalle de la tarea no se pudo cargar.",
@@ -6201,6 +6203,7 @@ const zhHans = {
   "today.floorNotes.completeError": "任务无法标为完成。",
 
   "tasks.title": "任务详情",
+  "tasks.operational.title.none": "任务",
   "tasks.noRestaurant.title": "没有餐厅工作区",
   "tasks.noRestaurant.body": "查看任务详情前请先打开一个餐厅。",
   "tasks.error": "任务详情无法加载。",

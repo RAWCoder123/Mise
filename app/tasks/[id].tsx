@@ -14,6 +14,7 @@ import { colors, conceptTypography, icon, iconStroke, typography } from "../../c
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { MessageKey } from "../../i18n/catalog";
+import { normalizeTaskDetailOperationalTitle } from "../../services/domain/presentationTaskDetailOperationalTitleIdentity";
 import {
   canRestaurantRoleCompleteSharedTask,
   type RestaurantTask
@@ -424,7 +425,19 @@ export default function TaskDetailScreen() {
             <View style={styles.hero}>
               {taskIcon(task, high ? colors.danger : colors.accentDark)}
               <View style={styles.heroCopy}>
-                <Text style={styles.title}>{presentation.title}</Text>
+                <Text style={styles.title}>
+                  {/*
+                    MISE-005ZB: pin Task detail operational presentation.title
+                    display to ASCII C. Soft-null empty / Unicode-padded / unsafe
+                    titles to tasks.operational.title.none without inventing clean
+                    title copy via Unicode trim. Descriptor-absent path passes
+                    raw task.title through presentOperationalTodayTask; leave
+                    sharedTask.title (#1159), Create Task tips, Operating Plan
+                    Timeline a11y (#1077), and presentation.detail alone.
+                  */}
+                  {normalizeTaskDetailOperationalTitle(presentation.title) ||
+                    t("tasks.operational.title.none")}
+                </Text>
                 <Badge
                   label={t(high ? "tasks.priority.high" : "task.badge.normal")}
                   tone={high ? "danger" : "neutral"}
