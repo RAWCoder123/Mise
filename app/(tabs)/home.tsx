@@ -28,6 +28,7 @@ import type {
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
+import { normalizeHomeActivityRowTitle } from "../../services/domain/presentationHomeActivityRowTitleIdentity";
 import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
@@ -429,7 +430,7 @@ function ActivitySection({
         <Text style={styles.emptyCopy}>{t("home.activity.empty")}</Text>
       ) : (
         events.map((event) => (
-          <ActivityRow key={event.id} event={event} formatDate={formatDate} />
+          <ActivityRow key={event.id} event={event} formatDate={formatDate} t={t} />
         ))
       )}
     </View>
@@ -438,10 +439,12 @@ function ActivitySection({
 
 function ActivityRow({
   event,
-  formatDate
+  formatDate,
+  t
 }: {
   event: ActivityEvent;
   formatDate: (value: string, options?: Intl.DateTimeFormatOptions) => string;
+  t: Translator;
 }) {
   // The clock must read in the restaurant's timezone. This used to slice the
   // ISO string, which showed UTC to every restaurant that isn't on it.
@@ -452,7 +455,17 @@ function ActivityRow({
     <View style={styles.activityRow}>
       <Text style={styles.activityTime}>{time}</Text>
       <View style={styles.activityCopy}>
-        <Text style={styles.activityTitle} numberOfLines={1}>{event.title}</Text>
+        <Text style={styles.activityTitle} numberOfLines={1}>
+          {/*
+            MISE-005YQ: pin Home ActivityRow event.title to ASCII C.
+            Soft-null empty / Unicode-padded / unsafe titles to
+            home.activity.row.title.none without inventing clean title
+            copy via Unicode trim. Leave Activity hub row title (#1148),
+            Activity expand a11y (#1071), and event.summary alone.
+          */}
+          {normalizeHomeActivityRowTitle(event.title) ||
+            t("home.activity.row.title.none")}
+        </Text>
         <Text style={styles.activitySummary} numberOfLines={2}>{event.summary}</Text>
       </View>
     </View>
