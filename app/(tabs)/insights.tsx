@@ -36,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeInsightsSignalDetail } from "../../services/domain/presentationInsightsSignalDetailIdentity";
 import {
   presentInsight,
   presentLearningMemory,
@@ -959,7 +960,7 @@ function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
 }
 
 function EvidenceRow({ signal, divided }: { signal: LearningMemorySignal; divided: boolean }) {
-  const { locale } = useLocale();
+  const { locale, t } = useLocale();
   const presentation = presentLearningMemorySignal(locale, signal);
   const isPositive = signal.tone === "leaf";
   const needsAttention = signal.tone === "brand" || signal.tone === "warning";
@@ -969,7 +970,16 @@ function EvidenceRow({ signal, divided }: { signal: LearningMemorySignal; divide
       <View style={[styles.signalDot, isPositive && styles.signalDotPositive, needsAttention && styles.signalDotAttention]} />
       <View style={styles.signalCopy}>
         <Text style={styles.signalLabel}>{presentation.label}</Text>
-        <Text style={styles.signalDetail}>{presentation.detail}</Text>
+        <Text style={styles.signalDetail}>
+          {/* MISE-005ZH: pin Insights signal presentation.detail display to
+              ASCII C. Soft-null empty / Unicode-padded / unsafe details to
+              insights.signal.detail.none without inventing clean detail copy
+              via Unicode trim. Leave presentation.label / presentation.value,
+              Task detail operational detail (#1165), and Timeline a11y detail
+              (#1078) alone. */}
+          {normalizeInsightsSignalDetail(presentation.detail) ||
+            t("insights.signal.detail.none")}
+        </Text>
       </View>
       <Text style={[styles.signalValue, isPositive && styles.signalValuePositive, needsAttention && styles.signalValueAttention]}>
         {presentation.value}
