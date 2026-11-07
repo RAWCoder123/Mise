@@ -14,8 +14,11 @@ import {
   type OperationalTodayTaskActionIntent,
   type OperationalTodayTaskTiming
 } from "../../services/domain/todayTasks";
+import { normalizeOperatingPlanTaskTitleDisplay } from "../../services/domain/presentationOperatingPlanTaskTitleDisplayIdentity";
 import { presentOperatingPlanItem } from "../../services/presentation/operationsPresentation";
 import type { RestaurantRole } from "../../types/mise";
+
+// MISE-005ZC: soft-null timeline display presentation.title before render.
 
 type Translator = (key: MessageKey, values?: MessageValues) => string;
 
@@ -183,7 +186,8 @@ function OperatingPlanItemRow({
         >
           <View style={styles.taskCopy}>
             <Text numberOfLines={2} style={styles.taskTitle}>
-              {presentation.title}
+              {normalizeOperatingPlanTaskTitleDisplay(presentation.title) ||
+                t("today.task.title.none")}
             </Text>
             {presentation.windowLabel ? (
               <Text numberOfLines={1} style={styles.taskWindow}>
