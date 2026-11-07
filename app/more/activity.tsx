@@ -20,6 +20,10 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import {
+  isActivityMetadataFreeTextKey,
+  normalizeActivityMetadataStringValue
+} from "../../services/domain/presentationActivityMetadataStringValueIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -218,7 +222,17 @@ export default function ActivityHistoryScreen() {
                     ) : null}
                     {Object.keys(event.metadata).length > 0 ? (
                       <Text style={styles.detailLine}>
-                        {t("activity.detail.metadata")}: {summarizeMetadata(event.metadata)}
+                        {/*
+                          MISE-005YZ: pin Activity expanded summarizeMetadata
+                          free-text string values (itemName / supplierName) to
+                          ASCII C. Soft-null empty / Unicode-padded / unsafe
+                          identities to activity.metadata.value.none without
+                          inventing clean display copy via Unicode trim. Leaves
+                          machine metadata fields, Activity evidence.summary
+                          (#1155), and Activity row title/summary surfaces alone.
+                        */}
+                        {t("activity.detail.metadata")}:{" "}
+                        {summarizeMetadata(event.metadata, t("activity.metadata.value.none"))}
                       </Text>
                     ) : null}
                   </View>
@@ -242,10 +256,15 @@ function formatActivityWhen(iso: string) {
   }
 }
 
-function summarizeMetadata(metadata: Record<string, unknown>) {
+function summarizeMetadata(metadata: Record<string, unknown>, freeTextFallback: string) {
   return Object.entries(metadata)
     .slice(0, 4)
-    .map(([key, value]) => `${key}=${typeof value === "string" || typeof value === "number" ? value : "…"}`)
+    .map(([key, value]) => {
+      if (isActivityMetadataFreeTextKey(key) && typeof value === "string") {
+        return `${key}=${normalizeActivityMetadataStringValue(value) || freeTextFallback}`;
+      }
+      return `${key}=${typeof value === "string" || typeof value === "number" ? value : "…"}`;
+    })
     .join(" · ");
 }
 
