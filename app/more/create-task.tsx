@@ -33,6 +33,7 @@ import {
   type RestaurantTaskServiceWindow,
   type RestaurantTaskVerificationMethod
 } from "../../services/miseService";
+import { normalizeCreateTaskChoiceRowTitle } from "../../services/domain/presentationCreateTaskChoiceRowTitleIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -596,7 +597,16 @@ export default function CreateOperatorTaskScreen() {
               {visibleOpenSharedTasks.slice(0, 12).map((task) => (
                 <ChoiceRow
                   key={task.id}
-                  label={task.title}
+                  // MISE-005YU: pin Create Task dependency ChoiceRow task.title
+                  // to ASCII C. Soft-null empty / Unicode-padded / unsafe titles
+                  // to operatorTasks.dependency.title.none without inventing
+                  // clean title copy via Unicode trim. Leave list display
+                  // (#1152), list-row a11y (#1072), form save-path (#880), and
+                  // assignee ChoiceRow name.trim alone.
+                  label={
+                    normalizeCreateTaskChoiceRowTitle(task.title) ||
+                    t("operatorTasks.dependency.title.none")
+                  }
                   detail={task.status}
                   selected={dependencyId === task.id}
                   onPress={() => setDependencyId(task.id)}
