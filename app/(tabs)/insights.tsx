@@ -36,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeInsightsMemoryOperatorCopy } from "../../services/domain/presentationInsightsMemoryOperatorCopyIdentity";
 import {
   presentInsight,
   presentLearningMemory,
@@ -944,7 +945,16 @@ function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
       {expanded ? (
         <MotionView distance={4} duration={220} style={styles.evidenceBody}>
           <Text style={styles.evidenceIntro}>
-            {presentation.operatorCopy}
+            {/* MISE-005ZL: pin How-Mise-knows memory evidenceIntro
+                presentation.operatorCopy display to ASCII C. Soft-null empty /
+                Unicode-padded / unsafe values to insights.memory.copy.none
+                without inventing clean operator copy via Unicode trim. Leave
+                memory subtitle label (#1169), presentation.nextStep, EvidenceRow
+                signal.label (#1167), signal.value (#1168), signal.detail
+                (#1166), Task detail operational title (#1160), and Home
+                HomeTaskRow title (#1162) alone. */}
+            {normalizeInsightsMemoryOperatorCopy(presentation.operatorCopy) ||
+              t("insights.memory.copy.none")}
           </Text>
           <View style={styles.signalList}>
             {memory.signals.map((signal, index) => (
