@@ -36,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeInsightsMemoryNextStep } from "../../services/domain/presentationInsightsMemoryNextStepIdentity";
 import {
   presentInsight,
   presentLearningMemory,
@@ -951,7 +952,18 @@ function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
               <EvidenceRow key={signal.label} signal={signal} divided={index > 0} />
             ))}
           </View>
-          <Text style={styles.evidenceNext}>{presentation.nextStep}</Text>
+          <Text style={styles.evidenceNext}>
+            {/* MISE-005ZM: pin How-Mise-knows memory evidenceNext
+                presentation.nextStep display to ASCII C. Soft-null empty /
+                Unicode-padded / unsafe values to insights.memory.nextStep.none
+                without inventing clean next step via Unicode trim. Leave
+                memory subtitle label (#1169), presentation.operatorCopy
+                (#1170), EvidenceRow signal.label (#1167), signal.value
+                (#1168), signal.detail (#1166), Task detail operational title
+                (#1160), and Home HomeTaskRow title (#1162) alone. */}
+            {normalizeInsightsMemoryNextStep(presentation.nextStep) ||
+              t("insights.memory.nextStep.none")}
+          </Text>
         </MotionView>
       ) : null}
     </SectionSurface>
