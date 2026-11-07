@@ -28,6 +28,7 @@ import type {
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
+import { normalizeHomeActivityRowSummary } from "../../services/domain/presentationHomeActivityRowSummaryIdentity";
 import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
@@ -429,7 +430,7 @@ function ActivitySection({
         <Text style={styles.emptyCopy}>{t("home.activity.empty")}</Text>
       ) : (
         events.map((event) => (
-          <ActivityRow key={event.id} event={event} formatDate={formatDate} />
+          <ActivityRow key={event.id} event={event} formatDate={formatDate} t={t} />
         ))
       )}
     </View>
@@ -438,10 +439,12 @@ function ActivitySection({
 
 function ActivityRow({
   event,
-  formatDate
+  formatDate,
+  t
 }: {
   event: ActivityEvent;
   formatDate: (value: string, options?: Intl.DateTimeFormatOptions) => string;
+  t: Translator;
 }) {
   // The clock must read in the restaurant's timezone. This used to slice the
   // ISO string, which showed UTC to every restaurant that isn't on it.
@@ -453,7 +456,18 @@ function ActivityRow({
       <Text style={styles.activityTime}>{time}</Text>
       <View style={styles.activityCopy}>
         <Text style={styles.activityTitle} numberOfLines={1}>{event.title}</Text>
-        <Text style={styles.activitySummary} numberOfLines={2}>{event.summary}</Text>
+        <Text style={styles.activitySummary} numberOfLines={2}>
+          {/*
+            MISE-005YS: pin Home ActivityRow event.summary to ASCII C.
+            Soft-null empty / Unicode-padded / unsafe summaries to
+            home.activity.row.summary.none without inventing clean summary
+            copy via Unicode trim. Leave Home ActivityRow event.title
+            (#1149), Activity hub row event.summary (#1150), Activity hub
+            row event.title (#1148), and expand a11y title (#1071) alone.
+          */}
+          {normalizeHomeActivityRowSummary(event.summary) ||
+            t("home.activity.row.summary.none")}
+        </Text>
       </View>
     </View>
   );
