@@ -21,6 +21,7 @@ import {
   fetchTodaySummary,
   type TodayCommandCenterSummary
 } from "../services/miseService";
+import { normalizeAskMisePriorityTitle } from "../services/domain/presentationAskMisePriorityTitleIdentity";
 import { presentOperationalTodayTask } from "../services/presentation/operationsPresentation";
 import { captureMiseError } from "../services/telemetry";
 import type { Insight } from "../types/mise";
@@ -368,7 +369,14 @@ export default function AskMiseScreen() {
                             <Circle size={icon.inline} color={colors.borderStrong} strokeWidth={iconStroke} />
                             <View style={styles.priorityCopy}>
                               <Text numberOfLines={1} style={styles.priorityTitle}>
-                                {presentation.title}
+                                {/* MISE-005ZE: pin Ask Mise priority presentation.title to ASCII C.
+                                    Soft-null empty / Unicode-padded / unsafe titles to
+                                    ask.priority.title.none without inventing clean title copy via
+                                    Unicode trim. Leave Home HomeTaskRow (#1162), Timeline display
+                                    (#1161) / a11y (#1077), Task detail operational (#1160),
+                                    askMise answer-text topTaskTitles, and presentation.detail alone. */}
+                                {normalizeAskMisePriorityTitle(presentation.title) ||
+                                  t("ask.priority.title.none")}
                               </Text>
                               <Text numberOfLines={1} style={styles.priorityDue}>
                                 {due}
