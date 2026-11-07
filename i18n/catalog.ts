@@ -731,6 +731,7 @@ const en = {
   "insights.memory.signal.orders": "Order memory",
   "insights.memory.signal.insights": "Signals",
   "insights.memory.value.learning": "Learning",
+  "insights.signal.value.none": "Value",
 
   "setup.title": "Restaurant setup",
   "setup.loadingPermissions": "Loading your workspace permissions.",
@@ -3029,6 +3030,7 @@ const es = {
   "insights.memory.signal.orders": "Memoria de pedidos",
   "insights.memory.signal.insights": "Señales",
   "insights.memory.value.learning": "Aprendiendo",
+  "insights.signal.value.none": "Valor",
 
   "setup.title": "Configuración del restaurante",
   "setup.loadingPermissions": "Cargando los permisos de tu espacio de trabajo.",
@@ -5323,6 +5325,7 @@ const zhHans = {
   "insights.memory.signal.orders": "订购记忆",
   "insights.memory.signal.insights": "信号",
   "insights.memory.value.learning": "学习中",
+  "insights.signal.value.none": "数值",
 
   "setup.title": "餐厅设置",
   "setup.loadingPermissions": "正在加载工作区权限。",

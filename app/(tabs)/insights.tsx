@@ -36,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeInsightsSignalValue } from "../../services/domain/presentationInsightsSignalValueIdentity";
 import {
   presentInsight,
   presentLearningMemory,
@@ -959,7 +960,7 @@ function HowMiseKnows({ memory }: { memory: LearningMemorySummary }) {
 }
 
 function EvidenceRow({ signal, divided }: { signal: LearningMemorySignal; divided: boolean }) {
-  const { locale } = useLocale();
+  const { locale, t } = useLocale();
   const presentation = presentLearningMemorySignal(locale, signal);
   const isPositive = signal.tone === "leaf";
   const needsAttention = signal.tone === "brand" || signal.tone === "warning";
@@ -972,7 +973,14 @@ function EvidenceRow({ signal, divided }: { signal: LearningMemorySignal; divide
         <Text style={styles.signalDetail}>{presentation.detail}</Text>
       </View>
       <Text style={[styles.signalValue, isPositive && styles.signalValuePositive, needsAttention && styles.signalValueAttention]}>
-        {presentation.value}
+        {/* MISE-005ZJ: pin Insights signal presentation.value display to
+            ASCII C. Soft-null empty / Unicode-padded / unsafe values to
+            insights.signal.value.none without inventing clean value copy
+            via Unicode trim. Leave presentation.label (#1167),
+            presentation.detail (#1166), and How-Mise-knows memory subtitle
+            label alone. */}
+        {normalizeInsightsSignalValue(presentation.value) ||
+          t("insights.signal.value.none")}
       </Text>
     </View>
   );
