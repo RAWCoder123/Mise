@@ -33,6 +33,7 @@ import {
   type RestaurantTaskServiceWindow,
   type RestaurantTaskVerificationMethod
 } from "../../services/miseService";
+import { normalizeCreateTaskListDisplayTitle } from "../../services/domain/presentationCreateTaskListDisplayTitleIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -694,7 +695,18 @@ export default function CreateOperatorTaskScreen() {
                   style={({ pressed }) => [styles.taskMain, pressed && styles.pressed]}
                 >
                   <View style={styles.taskCopy}>
-                    <Text style={styles.taskTitle}>{task.title}</Text>
+                    <Text style={styles.taskTitle}>
+                      {/*
+                        MISE-005YT: pin Create Task list display task.title to ASCII C.
+                        Soft-null empty / Unicode-padded / unsafe titles to
+                        operatorTasks.list.title.none without inventing clean
+                        title copy via Unicode trim. Leave list-row a11y
+                        (#1072), ChoiceRow label={task.title}, and form
+                        save-path title (#880) alone.
+                      */}
+                      {normalizeCreateTaskListDisplayTitle(task.title) ||
+                        t("operatorTasks.list.title.none")}
+                    </Text>
                     {task.detail ? <Text numberOfLines={3} style={styles.taskBody}>{task.detail}</Text> : null}
                     <Text style={styles.taskMeta}>
                       {t(task.status === "blocked" ? "operatorTasks.shared.blocked" : "operatorTasks.shared.central")}
@@ -739,7 +751,18 @@ export default function CreateOperatorTaskScreen() {
                     ]}
                   >
                     <View style={styles.taskCopy}>
-                      <Text style={styles.taskTitle}>{task.title}</Text>
+                      <Text style={styles.taskTitle}>
+                        {/*
+                          MISE-005YT: pin Create Task list display task.title to ASCII C.
+                          Soft-null empty / Unicode-padded / unsafe titles to
+                          operatorTasks.list.title.none without inventing clean
+                          title copy via Unicode trim. Leave list-row a11y
+                          (#1072), ChoiceRow label={task.title}, and form
+                          save-path title (#880) alone.
+                        */}
+                        {normalizeCreateTaskListDisplayTitle(task.title) ||
+                          t("operatorTasks.list.title.none")}
+                      </Text>
                       {task.body ? (
                         <Text numberOfLines={3} style={styles.taskBody}>
                           {task.body}
