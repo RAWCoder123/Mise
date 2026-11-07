@@ -28,6 +28,7 @@ import type {
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
+import { normalizeHomeTaskRowTitleDisplay } from "../../services/domain/presentationHomeTaskRowTitleDisplayIdentity";
 import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
@@ -729,7 +730,16 @@ function HomeTaskRow({
 
   return (
     <OperationalRow
-      title={presentation.title}
+      // MISE-005ZD: pin Home HomeTaskRow display presentation.title to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe titles to
+      // home.tasks.row.title.none without inventing clean title copy via
+      // Unicode trim. Leave Ask Mise priority presentation.title, Timeline
+      // display (#1161) / a11y (#1077), Task detail operational (#1160), and
+      // presentation.detail alone.
+      title={
+        normalizeHomeTaskRowTitleDisplay(presentation.title) ||
+        t("home.tasks.row.title.none")
+      }
       subtitle={subtitle}
       icon={taskIcon(task, high ? colors.danger : colors.text)}
       iconTone={high ? "danger" : "brand"}
