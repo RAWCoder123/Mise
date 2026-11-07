@@ -29,6 +29,7 @@ import {
   listSharedRestaurantTasks,
   reopenSharedRestaurantTask
 } from "../../services/miseService";
+import { normalizeTaskDetailOperationalDetail } from "../../services/domain/presentationTaskDetailOperationalDetailIdentity";
 import { presentOperationalTodayTask } from "../../services/presentation/operationsPresentation";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -440,7 +441,17 @@ export default function TaskDetailScreen() {
 
             <View style={styles.instructions}>
               <Text style={styles.sectionTitle}>{t("tasks.instructions.title")}</Text>
-              <Text style={styles.instructionsBody}>{presentation.detail}</Text>
+              <Text style={styles.instructionsBody}>
+                {/* MISE-005ZG: pin Task detail operational presentation.detail
+                    display to ASCII C. Soft-null empty / Unicode-padded / unsafe
+                    details to tasks.operational.detail.none without inventing
+                    clean detail copy via Unicode trim. Leave operational
+                    presentation.title (#1160), sharedTask.title (#1159),
+                    sharedTask.detail (#1025), Timeline a11y detail (#1078),
+                    and Insights signal presentation.detail alone. */}
+                {normalizeTaskDetailOperationalDetail(presentation.detail) ||
+                  t("tasks.operational.detail.none")}
+              </Text>
             </View>
 
             <View style={styles.divider} />
