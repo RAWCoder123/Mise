@@ -20,6 +20,7 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivityEvidenceSummary } from "../../services/domain/presentationActivityEvidenceSummaryIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -211,7 +212,19 @@ export default function ActivityHistoryScreen() {
                         <Text style={styles.detailLine}>{t("activity.detail.evidence")}</Text>
                         {event.evidenceReferences.slice(0, 4).map((evidence) => (
                           <Text key={`${evidence.type}:${evidence.id}`} style={styles.evidenceLine}>
-                            {evidence.type.replace(/_/g, " ")} — {evidence.summary}
+                            {/*
+                              MISE-005YW: pin Activity expanded evidence.summary
+                              to ASCII C. Soft-null empty / Unicode-padded /
+                              unsafe summaries to activity.evidence.summary.none
+                              without inventing clean display copy via Unicode
+                              trim. Leaves Activity row event.summary (#1150),
+                              Home ActivityRow event.summary (#1151), and
+                              Restaurant Memory evidence entry.summary (#1154)
+                              alone.
+                            */}
+                            {evidence.type.replace(/_/g, " ")} —{" "}
+                            {normalizeActivityEvidenceSummary(evidence.summary) ||
+                              t("activity.evidence.summary.none")}
                           </Text>
                         ))}
                       </View>
