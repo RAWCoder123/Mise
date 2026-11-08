@@ -30,6 +30,7 @@ import { RetryNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizeDailyReportDeliveriesLineUnit } from "../../services/domain/presentationDailyReportDeliveriesLineUnitIdentity";
 import {
   fetchDailyOpsReport,
   type DailyOpsReport
@@ -385,17 +386,34 @@ export default function DailyReportScreen() {
               {visibleReport.deliveriesToday.lines.length === 0 ? (
                 <Text style={styles.summaryCopy}>{t("dailyReport.deliveries.empty")}</Text>
               ) : (
-                visibleReport.deliveriesToday.lines.map((line) => (
-                  <Text key={line.id} style={styles.topItemLine}>
-                    {t("dailyReport.deliveries.line", {
-                      item: line.itemName,
-                      qty:
-                        line.quantity != null
-                          ? `${formatNumber(line.quantity)}${line.unit ? ` ${line.unit}` : ""}`
-                          : t("common.notSet")
-                    })}
-                  </Text>
-                ))
+                visibleReport.deliveriesToday.lines.map((line) => {
+                  // MISE-005AAJ: pin Daily Report deliveries.line.unit to ASCII C.
+                  // Soft-null empty / Unicode-padded / unsafe units so qty copy
+                  // cannot invent a clean unit via Unicode String#trim or render
+                  // blank-looking unit identity through the prior always-pass
+                  // truthy `line.unit ?` suffix. Soft-null restores the omit-unit
+                  // quantity-only fallback. Leave deliveries.line itemName
+                  // (#1065), waste/sales itemName tips (#1064 / #1063), Inventory
+                  // hub/detail/Scan Item/RecommendationDecisionRow unit tips
+                  // (#1192 / #1191 / #1193 / #1194), deliveryHistory notes
+                  // (#837), and controlled inventory.ops.unit labels alone.
+                  const deliveriesLineDisplayUnit = normalizeDailyReportDeliveriesLineUnit(
+                    line.unit
+                  );
+                  return (
+                    <Text key={line.id} style={styles.topItemLine}>
+                      {t("dailyReport.deliveries.line", {
+                        item: line.itemName,
+                        qty:
+                          line.quantity != null
+                            ? `${formatNumber(line.quantity)}${
+                                deliveriesLineDisplayUnit ? ` ${deliveriesLineDisplayUnit}` : ""
+                              }`
+                            : t("common.notSet")
+                      })}
+                    </Text>
+                  );
+                })
               )}
             </Card>
 
