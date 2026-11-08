@@ -43,6 +43,7 @@ import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
 } from "../../services/domain/wasteAnalysis";
+import { normalizeDailyReportLearningMemoryCopy } from "../../services/domain/presentationDailyReportLearningMemoryCopyIdentity";
 
 function BackAction() {
   const { t } = useLocale();
@@ -554,9 +555,27 @@ export default function DailyReportScreen() {
                   score: formatNumber(visibleReport.learning.credibilityScore)
                 })}
               </Text>
-              {visibleReport.learning.memoryCopy ? (
-                <Text style={styles.summaryCopy}>{visibleReport.learning.memoryCopy}</Text>
-              ) : null}
+              {(() => {
+                // MISE-005ZQ: pin Daily Report learning.memoryCopy to ASCII C.
+                // Soft-null empty / Unicode-padded / unsafe copies. When the raw
+                // field is present-but-unsafe, fall through to localized
+                // dailyReport.learning.memoryCopy.none without inventing clean
+                // learning copy via Unicode trim. Null raw memoryCopy (no
+                // learning memory) still omits the Text. Leave memoryNextStep /
+                // credibilityNextStep, advice action.title (#1173),
+                // action.detail (#1174), askBriefingText (#866), Insights
+                // How-Mise-knows operatorCopy (#1170), and Home ApprovalsSection
+                // card.title (#1049) alone.
+                const rawMemoryCopy = visibleReport.learning.memoryCopy;
+                if (rawMemoryCopy == null) return null;
+                const learningMemoryCopy =
+                  normalizeDailyReportLearningMemoryCopy(rawMemoryCopy);
+                return (
+                  <Text style={styles.summaryCopy}>
+                    {learningMemoryCopy || t("dailyReport.learning.memoryCopy.none")}
+                  </Text>
+                );
+              })()}
               <Text style={styles.metaLine}>
                 {visibleReport.learning.memoryNextStep ?? visibleReport.learning.credibilityNextStep}
               </Text>
