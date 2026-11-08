@@ -150,22 +150,59 @@ test("one failing cycle is isolated and recorded without cancelling the others",
 });
 
 test("withTimeout rejects a hung cycle with a typed timeout error", async () => {
-  const hung = new Promise<void>(() => {
-    /* never settles */
+  // Production withTimeout unrefs its timer so a hung cycle cannot pin a worker.
+  // Hold a short ref'd timer so the test event loop stays alive until timeout wins.
+  // Then settle the hung work so node:test does not cancel later tests in this file.
+  let releaseHung!: () => void;
+  const hung = new Promise<void>((resolve) => {
+    releaseHung = resolve;
+  });
+  const keepAlive = new Promise<void>((resolve) => {
+    setTimeout(resolve, 40);
   });
 
-  await assert.rejects(
-    () => withTimeout(hung, 10, "recalculation.daily_open exceeded its 10ms timeout"),
-    (error: unknown) =>
-      error instanceof RecalculationTimeoutError &&
-      error.message === "recalculation.daily_open exceeded its 10ms timeout"
-  );
+  await Promise.all([
+    assert.rejects(
+      () => withTimeout(hung, 10, "recalculation.daily_open exceeded its 10ms timeout"),
+      (error: unknown) =>
+        error instanceof RecalculationTimeoutError &&
+        error.message === "recalculation.daily_open exceeded its 10ms timeout"
+    ),
+    keepAlive
+  ]);
+
+  releaseHung();
 });
 
 test("withTimeout passes through a result that lands inside the budget", async () => {
   assert.equal(await withTimeout(Promise.resolve("done"), 5_000, "unused"), "done");
   // A non-positive budget means no timer is armed at all.
   assert.equal(await withTimeout(Promise.resolve("done"), 0, "unused"), "done");
+});
+
+test("withTimeout keeps the timeout winner when work settles late", async () => {
+  let releaseLate!: (value: string) => void;
+  const late = new Promise<string>((resolve) => {
+    releaseLate = resolve;
+  });
+  const keepAlive = new Promise<void>((resolve) => {
+    setTimeout(resolve, 40);
+  });
+
+  await Promise.all([
+    assert.rejects(
+      () => withTimeout(late, 10, "recalculation.mid_shift exceeded its 10ms timeout"),
+      (error: unknown) =>
+        error instanceof RecalculationTimeoutError &&
+        error.message === "recalculation.mid_shift exceeded its 10ms timeout"
+    ),
+    keepAlive
+  ]);
+
+  // Late settlement must not invent a success after the timeout already won,
+  // and must not leave an unhandled rejection on the wrapper.
+  releaseLate("too-late");
+  await Promise.resolve();
 });
 
 test("a timed-out cycle is recorded as failed and flagged as a timeout", async () => {
