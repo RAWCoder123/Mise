@@ -30,6 +30,7 @@ import {
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
+import { normalizeInventoryDetailUnit } from "../../services/domain/presentationInventoryDetailUnitIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -343,6 +344,21 @@ export default function InventoryDetailScreen() {
   }
 
   const busy = submittingOperation || savingSettings;
+  // MISE-005AAF: pin Inventory detail display item.unit to ASCII C.
+  // Soft-null / Unicode-padded units fall through to
+  // inventory.detail.unit.none without inventing clean unit identity from
+  // NBSP/em-space padding, and without letting Unicode-only space or empty
+  // string render blank-looking unit copy in quantity suffixes or
+  // unit-bearing labels. Leave Inventory detail subtitle category (#1189),
+  // Inventory detail supplier_name (#1052), Inventory detail title
+  // item.item_name (#1017), setup inventory units (#861), inventory
+  // recipe-mapping units (#864), inventory unit client helpers (#669),
+  // Inventory hub unit suffixes, Scan Item quantity unit suffixes,
+  // RecommendationDecisionRow suggested unit, and controlled
+  // inventory.ops.unit canonical labels alone.
+  const inventoryDetailDisplayUnit = item
+    ? normalizeInventoryDetailUnit(item.unit) || t("inventory.detail.unit.none")
+    : t("inventory.detail.unit.none");
 
   return (
     <Screen
@@ -376,7 +392,7 @@ export default function InventoryDetailScreen() {
             stats={[
               {
                 label: t("inventory.detail.projected"),
-                value: `${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${item.unit}`,
+                value: `${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${inventoryDetailDisplayUnit}`,
                 tone:
                   status === "Good"
                     ? "leaf"
@@ -388,12 +404,12 @@ export default function InventoryDetailScreen() {
               },
               {
                 label: t("inventory.detail.lastCount"),
-                value: `${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${item.unit}`,
+                value: `${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${inventoryDetailDisplayUnit}`,
                 tone: "neutral"
               },
               {
                 label: t("inventory.detail.posUsed"),
-                value: `${formatNumber(prediction.todayDepletion, { maximumFractionDigits: 1 })} ${item.unit}`,
+                value: `${formatNumber(prediction.todayDepletion, { maximumFractionDigits: 1 })} ${inventoryDetailDisplayUnit}`,
                 tone: "neutral"
               }
             ]}
@@ -424,14 +440,16 @@ export default function InventoryDetailScreen() {
               <View style={styles.countBlock}>
                 <Text style={styles.countLabel}>{t("inventory.detail.lastCount")}</Text>
                 <Text style={styles.countValue}>
-                  {formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} {item.unit}
+                  {formatNumber(item.current_quantity, { maximumFractionDigits: 1 })}{" "}
+                  {inventoryDetailDisplayUnit}
                 </Text>
               </View>
               <View style={styles.countBlock}>
                 <Text style={styles.countLabel}>{t("inventory.detail.posDepleted")}</Text>
                 <Text style={[styles.countValue, prediction.todayDepletion > 0 && styles.depletionValue]}>
                   {prediction.todayDepletion > 0 ? "-" : ""}
-                  {formatNumber(prediction.todayDepletion, { maximumFractionDigits: 1 })} {item.unit}
+                  {formatNumber(prediction.todayDepletion, { maximumFractionDigits: 1 })}{" "}
+                  {inventoryDetailDisplayUnit}
                 </Text>
               </View>
             </View>
@@ -457,7 +475,9 @@ export default function InventoryDetailScreen() {
                 <Text style={styles.factValue}>
                   {formatNumber(prediction.averageDailyUsage, { maximumFractionDigits: 1 })}
                 </Text>
-                <Text style={styles.factLabel}>{t("inventory.detail.perDay", { unit: item.unit })}</Text>
+                <Text style={styles.factLabel}>
+                  {t("inventory.detail.perDay", { unit: inventoryDetailDisplayUnit })}
+                </Text>
               </View>
               <View style={styles.fact}>
                 <Text style={styles.factValue}>
@@ -576,7 +596,7 @@ export default function InventoryDetailScreen() {
               {canManage ? t("inventory.detail.parSettings") : t("inventory.detail.countSettings")}
             </Text>
             <Field
-              label={t("inventory.detail.parLevel", { unit: item.unit })}
+              label={t("inventory.detail.parLevel", { unit: inventoryDetailDisplayUnit })}
               value={parLevel}
               onChangeText={(value) => {
                 setParLevel(value);
@@ -586,7 +606,7 @@ export default function InventoryDetailScreen() {
               error={settingErrors.parLevel}
             />
             <Field
-              label={t("inventory.detail.reorderThreshold", { unit: item.unit })}
+              label={t("inventory.detail.reorderThreshold", { unit: inventoryDetailDisplayUnit })}
               value={reorderThreshold}
               onChangeText={(value) => {
                 setReorderThreshold(value);
