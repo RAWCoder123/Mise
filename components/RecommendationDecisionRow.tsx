@@ -9,6 +9,7 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityResult
 } from "../services/domain/purchaseAuthority";
+import { normalizeRecommendationDecisionRowReason } from "../services/domain/presentationRecommendationDecisionRowReasonIdentity";
 import type { MessageKey } from "../i18n/catalog";
 import type { PurchaseRecommendation } from "../types/mise";
 import type { PurchaseDecisionPattern } from "../services/domain/purchaseDecisionMemory";
@@ -71,6 +72,20 @@ export function RecommendationDecisionRow({
     ? (`orders.memory.outcome.${purchaseDecisionPattern.dominantOutcome}` as MessageKey)
     : null;
 
+  // MISE-005ZX: pin RecommendationDecisionRow recommendation.reason to ASCII C.
+  // Soft-null / Unicode-padded reasons fall through to
+  // orders.recommendation.reason.none without inventing clean reason identity
+  // from NBSP/em-space padding, and without letting Unicode-only space or empty
+  // string render a blank-looking expanded reason Text. Leave
+  // RecommendationDecisionRow item_name (#1055), Orders review supplier_name
+  // (#1051), Inventory detail item_name / supplier_name (#1017 / #1052),
+  // SupplierDraftCard surfaces (#1050 / #972), Home ApprovalsSection
+  // whyItMatters / recommendedAction (#1135 / #1134), Daily Report signal.line
+  // (#1179), and operating-plan why tokens (#865) alone.
+  const reason =
+    normalizeRecommendationDecisionRowReason(recommendation.reason) ||
+    t("orders.recommendation.reason.none");
+
   return (
     <View style={[styles.row, showDivider && styles.rowDivider, busy && styles.rowBusy]}>
       <View style={styles.heading}>
@@ -114,7 +129,7 @@ export function RecommendationDecisionRow({
 
       {expanded ? (
         <View style={styles.reasonPanel}>
-          <Text style={styles.reason}>{recommendation.reason}</Text>
+          <Text style={styles.reason}>{reason}</Text>
           <Text style={styles.reasonMeta}>
             {t("orders.recommendation.suggested", {
               quantity: suggestedQuantity,
