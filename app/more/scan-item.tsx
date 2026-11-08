@@ -15,6 +15,7 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
+import { normalizeScanItemQuantityUnit } from "../../services/domain/presentationScanItemQuantityUnitIdentity";
 import { fetchInventoryItems } from "../../services/miseService";
 import type { InventoryItem } from "../../types/mise";
 
@@ -249,21 +250,37 @@ export default function ScanItemScreen() {
           />
         ) : (
           <View style={styles.list}>
-            {listItems.map((item) => (
-              <OperationalRow
-                key={item.id}
-                density="operational"
-                title={item.item_name}
-                subtitle={t("scanItem.row.meta", {
-                  category: item.category,
-                  code: item.id
-                })}
-                value={`${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${item.unit}`}
-                icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
-                onPress={() => router.push(`/inventory/${item.id}`)}
-                accessibilityLabel={t("scanItem.row.accessibility", { item: item.item_name })}
-              />
-            ))}
+            {listItems.map((item) => {
+              // MISE-005AAH: pin Scan Item quantity item.unit to ASCII C.
+              // Soft-null / Unicode-padded units fall through to
+              // scanItem.row.unit.none without inventing clean unit identity
+              // from NBSP/em-space padding, and without letting Unicode-only
+              // space or empty string render blank-looking unit copy in the
+              // OperationalRow quantity value. Leave Scan Item row meta
+              // category (#1190), Scan Item row item.item_name (#1061),
+              // Inventory hub quantity unit (#1192), Inventory detail unit
+              // (#1191), RecommendationDecisionRow suggested unit, and
+              // controlled inventory.ops.unit canonical labels alone.
+              const scanItemQuantityDisplayUnit =
+                normalizeScanItemQuantityUnit(item.unit) ||
+                t("scanItem.row.unit.none");
+
+              return (
+                <OperationalRow
+                  key={item.id}
+                  density="operational"
+                  title={item.item_name}
+                  subtitle={t("scanItem.row.meta", {
+                    category: item.category,
+                    code: item.id
+                  })}
+                  value={`${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${scanItemQuantityDisplayUnit}`}
+                  icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
+                  onPress={() => router.push(`/inventory/${item.id}`)}
+                  accessibilityLabel={t("scanItem.row.accessibility", { item: item.item_name })}
+                />
+              );
+            })}
           </View>
         )}
 
