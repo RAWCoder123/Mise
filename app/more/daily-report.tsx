@@ -43,6 +43,7 @@ import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
 } from "../../services/domain/wasteAnalysis";
+import { normalizeDailyReportSignalLine } from "../../services/domain/presentationDailyReportSignalLineIdentity";
 
 function BackAction() {
   const { t } = useLocale();
@@ -516,34 +517,48 @@ export default function DailyReportScreen() {
 
             <SectionHeader title={t("dailyReport.section.signals")} />
             <Card>
-              {visibleReport.signalsByType.map((signal) => (
-                <View key={signal.type} style={styles.signalRow}>
-                  <View style={styles.signalHeader}>
-                    <Text style={styles.signalType}>
-                      {t(`dailyReport.signal.${signal.type}` as MessageKey)}
-                    </Text>
-                    {signal.severity ? (
-                      <Badge
-                        label={t(
-                          signal.severity === "urgent"
-                            ? "dailyReport.severity.urgent"
-                            : signal.severity === "warning"
-                              ? "dailyReport.severity.warning"
-                              : "dailyReport.severity.info"
-                        )}
-                        tone={
-                          signal.severity === "urgent"
-                            ? "danger"
-                            : signal.severity === "warning"
-                              ? "warning"
-                              : "neutral"
-                        }
-                      />
-                    ) : null}
+              {visibleReport.signalsByType.map((signal) => {
+                // MISE-005ZU: pin Daily Report signalsByType signal.line to
+                // ASCII C. Soft-null empty / Unicode-padded / unsafe insight-
+                // derived lines before the signalLine Text so blank-looking
+                // closeout signals cannot invent clean identity via Unicode
+                // trim; fall through to localized dailyReport.signal.line.none.
+                // Leave advice action.title (#1173) / action.detail (#1174),
+                // askBriefingText (#866), learning memoryCopy / memoryNextStep /
+                // credibilityNextStep (#1175–#1177), credibilityLabel (#258),
+                // and Insights signal presentation tips (#1166–#1168) alone.
+                const signalLine =
+                  normalizeDailyReportSignalLine(signal.line) ||
+                  t("dailyReport.signal.line.none");
+                return (
+                  <View key={signal.type} style={styles.signalRow}>
+                    <View style={styles.signalHeader}>
+                      <Text style={styles.signalType}>
+                        {t(`dailyReport.signal.${signal.type}` as MessageKey)}
+                      </Text>
+                      {signal.severity ? (
+                        <Badge
+                          label={t(
+                            signal.severity === "urgent"
+                              ? "dailyReport.severity.urgent"
+                              : signal.severity === "warning"
+                                ? "dailyReport.severity.warning"
+                                : "dailyReport.severity.info"
+                          )}
+                          tone={
+                            signal.severity === "urgent"
+                              ? "danger"
+                              : signal.severity === "warning"
+                                ? "warning"
+                                : "neutral"
+                          }
+                        />
+                      ) : null}
+                    </View>
+                    <Text style={styles.signalLine}>{signalLine}</Text>
                   </View>
-                  <Text style={styles.signalLine}>{signal.line}</Text>
-                </View>
-              ))}
+                );
+              })}
             </Card>
 
             <SectionHeader title={t("dailyReport.section.learning")} />
