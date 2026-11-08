@@ -43,6 +43,7 @@ import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
 } from "../../services/domain/wasteAnalysis";
+import { normalizeDailyReportAdviceActionTitle } from "../../services/domain/presentationDailyReportAdviceActionTitleIdentity";
 
 function BackAction() {
   const { t } = useLocale();
@@ -570,21 +571,42 @@ export default function DailyReportScreen() {
                   <Text style={styles.briefingText}>{visibleReport.managerAdvice.askBriefingText}</Text>
                 </View>
               ) : null}
-              {visibleReport.managerAdvice.actions.map((action) => (
-                <View key={action.id} style={styles.adviceRow}>
-                  <View style={styles.adviceCopy}>
-                    <Text style={styles.adviceTitle}>{action.title}</Text>
-                    <Text style={styles.summaryCopy}>{action.detail}</Text>
+              {visibleReport.managerAdvice.actions.map((action) => {
+                // MISE-005ZO: pin Daily Report managerAdvice action.title to
+                // ASCII C. Soft-null empty / Unicode-padded / unsafe titles
+                // fall through to localized
+                // dailyReport.advice.actionTitle.none without inventing clean
+                // advice identity via Unicode trim. Leave action.detail,
+                // askBriefingText (#866), learning memoryCopy / memoryNextStep,
+                // and Home ApprovalsSection card.title (#1049) alone.
+                const adviceActionTitle = normalizeDailyReportAdviceActionTitle(
+                  action.title
+                );
+                return (
+                  <View key={action.id} style={styles.adviceRow}>
+                    <View style={styles.adviceCopy}>
+                      <Text style={styles.adviceTitle}>
+                        {adviceActionTitle ||
+                          t("dailyReport.advice.actionTitle.none")}
+                      </Text>
+                      <Text style={styles.summaryCopy}>{action.detail}</Text>
+                    </View>
+                    <Button
+                      title={t("dailyReport.advice.open")}
+                      variant="secondary"
+                      size="compact"
+                      icon={
+                        <ArrowRight
+                          size={icon.inline}
+                          color={colors.text}
+                          strokeWidth={iconStroke}
+                        />
+                      }
+                      onPress={() => router.push(action.route)}
+                    />
                   </View>
-                  <Button
-                    title={t("dailyReport.advice.open")}
-                    variant="secondary"
-                    size="compact"
-                    icon={<ArrowRight size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
-                    onPress={() => router.push(action.route)}
-                  />
-                </View>
-              ))}
+                );
+              })}
             </Card>
           </>
         ) : null}
