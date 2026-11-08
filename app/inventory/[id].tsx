@@ -30,6 +30,7 @@ import {
   queueInventoryOperation,
   updateInventoryItem
 } from "../../services/miseService";
+import { normalizeInventoryDetailCategory } from "../../services/domain/presentationInventoryDetailCategoryIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -343,11 +344,29 @@ export default function InventoryDetailScreen() {
   }
 
   const busy = submittingOperation || savingSettings;
+  // MISE-005AAD: pin Inventory detail subtitle item.category to ASCII C.
+  // Soft-null / Unicode-padded categories fall through to
+  // inventory.detail.category.none without inventing clean category
+  // identity from NBSP/em-space padding, and without letting Unicode-only
+  // space or empty string render a blank-looking category after the
+  // supplier separator. Leave Inventory detail supplier_name (#1052),
+  // Inventory detail title item.item_name (#1017), Inventory hub
+  // item.item_name (#1056), Inventory categoryIcon classify (#701),
+  // setup POS itemName/category (#872), Square catalog category (#952),
+  // and Scan Item row meta category interpolations alone.
+  const inventoryDetailDisplayCategory = item
+    ? normalizeInventoryDetailCategory(item.category) ||
+      t("inventory.detail.category.none")
+    : null;
 
   return (
     <Screen
       title={item?.item_name ?? t("inventory.detail.title")}
-      subtitle={item ? `${item.supplier_name} · ${item.category}` : t("inventory.detail.subtitle")}
+      subtitle={
+        item
+          ? `${item.supplier_name} · ${inventoryDetailDisplayCategory}`
+          : t("inventory.detail.subtitle")
+      }
       loading={loading}
       keyboardAware
       action={
