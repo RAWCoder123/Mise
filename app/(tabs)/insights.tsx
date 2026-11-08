@@ -36,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeInsightsInsightRecommendedAction } from "../../services/domain/presentationInsightsInsightRecommendedActionIdentity";
 import {
   presentInsight,
   presentLearningMemory,
@@ -906,7 +907,18 @@ function InsightListRow({ insight, divided }: { insight: Insight; divided: boole
         ) : null}
         <View style={[styles.actionLine, isUrgent && styles.actionLineDanger]}>
           <Text style={styles.actionLabel}>{t("insights.nextAction")}</Text>
-          <Text style={styles.actionText}>{presentation.recommendedAction}</Text>
+          {/* MISE-005AAA: pin InsightListRow presentation.recommendedAction
+              display to ASCII C. Structured insight.rule.* actions embed
+              free-form item / supplier names; opaque evidence actions compose
+              free-form recommended_action. Unicode-padded / Unicode-only-space
+              copy invents via trim / truthy always-pass actionText Text.
+              Soft-null to insights.insight.recommendedAction.none without
+              inventing clean InsightListRow next-action copy. Leave title /
+              description / whyItMatters raw on this tip. */}
+          <Text style={styles.actionText}>
+            {normalizeInsightsInsightRecommendedAction(presentation.recommendedAction) ||
+              t("insights.insight.recommendedAction.none")}
+          </Text>
         </View>
       </View>
     </View>
