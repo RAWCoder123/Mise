@@ -43,6 +43,7 @@ import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
 } from "../../services/domain/wasteAnalysis";
+import { normalizeDailyReportLearningMemoryNextStep } from "../../services/domain/presentationDailyReportLearningMemoryNextStepIdentity";
 
 function BackAction() {
   const { t } = useLocale();
@@ -558,7 +559,28 @@ export default function DailyReportScreen() {
                 <Text style={styles.summaryCopy}>{visibleReport.learning.memoryCopy}</Text>
               ) : null}
               <Text style={styles.metaLine}>
-                {visibleReport.learning.memoryNextStep ?? visibleReport.learning.credibilityNextStep}
+                {(() => {
+                  // MISE-005ZR: pin Daily Report learning.memoryNextStep to ASCII C.
+                  // Soft-null empty / Unicode-padded / unsafe next steps. When the
+                  // raw memoryNextStep field is present-but-unsafe, fall through
+                  // to localized dailyReport.learning.memoryNextStep.none without
+                  // inventing clean next-step copy via Unicode trim. Null raw
+                  // memoryNextStep still falls through to credibilityNextStep.
+                  // Leave credibilityNextStep, memoryCopy (#1175), advice
+                  // action.title (#1173), action.detail (#1174), askBriefingText
+                  // (#866), Insights How-Mise-knows nextStep (#1171), and Home
+                  // ApprovalsSection card.title (#1049) alone.
+                  const rawMemoryNextStep = visibleReport.learning.memoryNextStep;
+                  if (rawMemoryNextStep == null) {
+                    return visibleReport.learning.credibilityNextStep;
+                  }
+                  const learningMemoryNextStep =
+                    normalizeDailyReportLearningMemoryNextStep(rawMemoryNextStep);
+                  return (
+                    learningMemoryNextStep ||
+                    t("dailyReport.learning.memoryNextStep.none")
+                  );
+                })()}
               </Text>
             </Card>
 
