@@ -27,6 +27,7 @@ import type {
   OperatingBrief,
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
+import { normalizeHomeStatusLowStockItemName } from "../../services/domain/presentationHomeStatusLowStockItemNameIdentity";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
 import {
   classifyOperationalTodayTaskTiming,
@@ -348,7 +349,21 @@ function RestaurantStatusCard({
       tone={brief.restaurantStatus.status === "attention_needed" ? "warning" : "danger"}
       title={
         primaryMenuRisk
-          ? t("home.alert.lowStock.itemTitle", { item: primaryMenuRisk.itemName })
+          ? t("home.alert.lowStock.itemTitle", {
+              // MISE-005ZT: pin Home StatusNotice low-stock primaryMenuRisk.itemName
+              // to ASCII C. Soft-null empty / Unicode-padded / unsafe inventory
+              // names before home.alert.lowStock.itemTitle interpolations so
+              // blank-looking `{item}` slots cannot render through the prior
+              // always-pass path; fall through to localized
+              // home.alert.lowStock.itemName.none. Leave StatusNotice topRisk
+              // (#1138), summary (#1137), whyItMatters (#1136), approval titles
+              // (#1011), ApprovalsSection card.title (#1049) /
+              // recommendedAction (#1134) / whyItMatters (#1135), and Home
+              // greeting restaurant.name (#1044) alone.
+              item:
+                normalizeHomeStatusLowStockItemName(primaryMenuRisk.itemName) ||
+                t("home.alert.lowStock.itemName.none")
+            })
           : primaryApproval?.title || t(statusKey)
       }
       message={topRisk ? t(statusKey) : primaryApproval?.whyItMatters ?? brief.restaurantStatus.summary}
