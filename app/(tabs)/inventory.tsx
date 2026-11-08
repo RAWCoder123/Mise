@@ -35,6 +35,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import { normalizeInventoryHubUnit } from "../../services/domain/presentationInventoryHubUnitIdentity";
 import {
   fetchInventoryOutlookItems,
   fetchOpenInventoryCountSession,
@@ -471,11 +472,26 @@ function InventoryListRow({
   const iconTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "leaf";
   const badgeTone = isCritical ? "danger" : isLow ? "warning" : isWatch ? "caution" : "success";
 
+  // MISE-005AAG: pin Inventory hub list item.unit to ASCII C.
+  // Soft-null / Unicode-padded units fall through to inventory.row.unit.none
+  // without inventing clean unit identity from NBSP/em-space padding, and
+  // without letting Unicode-only space or empty string render blank-looking
+  // unit copy in the OperationalRow quantity subtitle. Leave Inventory
+  // detail display unit (#1191), Inventory hub item.item_name (#1056),
+  // Inventory detail category (#1189), Inventory detail supplier_name
+  // (#1052), Inventory detail title item.item_name (#1017), setup inventory
+  // units (#861), inventory recipe-mapping units (#864), inventory unit
+  // client helpers (#669), Scan Item quantity unit suffixes,
+  // RecommendationDecisionRow suggested unit, and controlled
+  // inventory.ops.unit canonical labels alone.
+  const inventoryHubDisplayUnit =
+    normalizeInventoryHubUnit(item.unit) || t("inventory.row.unit.none");
+
   return (
     <OperationalRow
       density="operational"
       title={item.item_name}
-      subtitle={`${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${item.unit} · ${localized.coverage}`}
+      subtitle={`${formatNumber(prediction.projectedQuantity, { maximumFractionDigits: 1 })} ${inventoryHubDisplayUnit} · ${localized.coverage}`}
       icon={categoryIcon(item.category, statusColor)}
       iconTone={iconTone}
       badgeLabel={localized.status}
