@@ -36,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeInsightsInsightDescription } from "../../services/domain/presentationInsightsInsightDescriptionIdentity";
 import {
   presentInsight,
   presentLearningMemory,
@@ -897,7 +898,17 @@ function InsightListRow({ insight, divided }: { insight: Insight; divided: boole
             {labelForFilter(t, insight.severity)}
           </Text>
         </View>
-        <Text style={styles.insightDescription}>{presentation.description}</Text>
+        {/* MISE-005ZY: pin InsightListRow presentation.description display to
+            ASCII C. Soft-null Unicode-padded / control-bearing / blank-looking
+            opaque evidence copy (and structured rule descriptions that embed
+            free-form item names) so the live branch owns
+            insights.insight.description.none without inventing clean
+            description identity via Unicode trim. Leave title / whyItMatters /
+            recommendedAction raw on this tip. */}
+        <Text style={styles.insightDescription}>
+          {normalizeInsightsInsightDescription(presentation.description) ||
+            t("insights.insight.description.none")}
+        </Text>
         {presentation.whyItMatters ? (
           <Text style={styles.insightEvidence}>
             <Text style={styles.insightEvidenceLabel}>{t("insights.whyItMatters")}</Text>
