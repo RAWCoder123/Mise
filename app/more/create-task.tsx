@@ -33,6 +33,7 @@ import {
   type RestaurantTaskServiceWindow,
   type RestaurantTaskVerificationMethod
 } from "../../services/miseService";
+import { normalizeCreateTaskListDisplayBody } from "../../services/domain/presentationCreateTaskListDisplayBodyIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -695,7 +696,29 @@ export default function CreateOperatorTaskScreen() {
                 >
                   <View style={styles.taskCopy}>
                     <Text style={styles.taskTitle}>{task.title}</Text>
-                    {task.detail ? <Text numberOfLines={3} style={styles.taskBody}>{task.detail}</Text> : null}
+                    {(() => {
+                      // MISE-005ZW: pin Create Task list display task.detail to
+                      // ASCII C. Soft-null empty / Unicode-padded / unsafe
+                      // bodies. When the raw field is present-but-unsafe, fall
+                      // through to localized operatorTasks.list.body.none
+                      // without inventing clean body copy via Unicode trim.
+                      // Null / empty raw detail (optional description) still
+                      // omits the Text. Leave list display task.title (#1152),
+                      // list-row a11y (#1072), ChoiceRow label={task.title}
+                      // (#1153), form save-path title/body, Task detail
+                      // shared/operational surfaces (#1159/#1160/#1165), and
+                      // personal list task.body (handled below with the same
+                      // helper) alone as separate call sites.
+                      const rawDetail = task.detail;
+                      if (rawDetail == null || rawDetail === "") return null;
+                      const listBody =
+                        normalizeCreateTaskListDisplayBody(rawDetail);
+                      return (
+                        <Text numberOfLines={3} style={styles.taskBody}>
+                          {listBody || t("operatorTasks.list.body.none")}
+                        </Text>
+                      );
+                    })()}
                     <Text style={styles.taskMeta}>
                       {t(task.status === "blocked" ? "operatorTasks.shared.blocked" : "operatorTasks.shared.central")}
                     </Text>
@@ -740,11 +763,25 @@ export default function CreateOperatorTaskScreen() {
                   >
                     <View style={styles.taskCopy}>
                       <Text style={styles.taskTitle}>{task.title}</Text>
-                      {task.body ? (
-                        <Text numberOfLines={3} style={styles.taskBody}>
-                          {task.body}
-                        </Text>
-                      ) : null}
+                      {(() => {
+                        // MISE-005ZW: pin Create Task list display task.body to
+                        // ASCII C (same helper as restaurant task.detail).
+                        // Soft-null empty / Unicode-padded / unsafe bodies.
+                        // Present-but-unsafe → operatorTasks.list.body.none.
+                        // Null / empty raw body still omits the Text. Leave
+                        // list display task.title (#1152), a11y (#1072),
+                        // ChoiceRow (#1153), and form save-path body normalize
+                        // alone.
+                        const rawBody = task.body;
+                        if (rawBody == null || rawBody === "") return null;
+                        const listBody =
+                          normalizeCreateTaskListDisplayBody(rawBody);
+                        return (
+                          <Text numberOfLines={3} style={styles.taskBody}>
+                            {listBody || t("operatorTasks.list.body.none")}
+                          </Text>
+                        );
+                      })()}
                       {dueLabel ? <Text style={styles.taskMeta}>{dueLabel}</Text> : null}
                     </View>
                     <View style={styles.badges}>
