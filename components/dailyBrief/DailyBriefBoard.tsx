@@ -14,6 +14,7 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefMissingDataItem } from "../../services/domain/presentationDailyBriefMissingDataItemIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -248,7 +249,23 @@ function FindingCard({
       <Text style={styles.meta}>{t("dailyBrief.workflow", { workflow: finding.affectedWorkflow })}</Text>
       {finding.freshness.missingData.length > 0 ? (
         <Text style={styles.missing}>
-          {t("dailyBrief.missingData", { items: finding.freshness.missingData.join(", ") })}
+          {t("dailyBrief.missingData", {
+            // MISE-005ZV: pin each Daily Brief freshness missingData token to
+            // ASCII C before join. Soft-null empty / Unicode-padded / unsafe
+            // free-form entries (including menu_mapping:${name} item names)
+            // so blank-looking Missing lines cannot invent clean identity via
+            // Unicode trim. Leave finding.title (#1145), explanation (#1142),
+            // affectedWorkflow (deferred), recommendedAction a11y, Phase Brief
+            // FindingRow surfaces (#1156 / #1157), and Daily Report signal.line
+            // (#1179) alone.
+            items: finding.freshness.missingData
+              .map(
+                (item) =>
+                  normalizeDailyBriefMissingDataItem(item) ||
+                  t("dailyBrief.missingData.item.none")
+              )
+              .join(", ")
+          })}
         </Text>
       ) : null}
 
