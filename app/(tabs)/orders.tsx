@@ -37,6 +37,7 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityResult
 } from "../../services/domain/purchaseAuthority";
+import { normalizeOrdersHubNoticeCopiedSupplierName } from "../../services/domain/presentationOrdersHubNoticeCopiedSupplierNameIdentity";
 import type { MessageKey } from "../../i18n/catalog";
 import type { PurchaseDecisionPattern } from "../../services/domain/purchaseDecisionMemory";
 import {
@@ -528,7 +529,19 @@ export default function OrdersScreen() {
         supplier_name: order.supplier_name,
         status: order.status
       });
-      showMessage(t("orders.notice.copied", { supplier: order.supplier_name }), order.restaurant_id);
+      // MISE-005AAC: pin Orders hub notice.copied order.supplier_name to ASCII C.
+      // Soft-null / Unicode-padded supplier names fall through to
+      // orders.notice.supplierName.none without inventing clean supplier
+      // identity from NBSP/em-space padding, and without letting Unicode-only
+      // space or empty string interpolate a blank-looking StatusNotice
+      // supplier token. Leave Orders hub notice item_name (#1057),
+      // SupplierDraftCard supplier_name (#1050), Orders review supplier_name
+      // (#1051), Orders detail title (#1016) / action a11y (#1068), and
+      // order_copied telemetry supplier_name alone.
+      const copiedSupplierName =
+        normalizeOrdersHubNoticeCopiedSupplierName(order.supplier_name) ||
+        t("orders.notice.supplierName.none");
+      showMessage(t("orders.notice.copied", { supplier: copiedSupplierName }), order.restaurant_id);
     } catch {
       showMessage(t("orders.error.copy"), order.restaurant_id, "danger");
     }
