@@ -35,6 +35,7 @@ const en = {
   "screen.currentRestaurant": "Current restaurant: {restaurant}",
   "screen.openRestaurantSettings": "Open restaurant settings for {restaurant}",
   "screen.openRestaurantSettingsHint": "Opens restaurant settings and workspace selection",
+  "screen.restaurantSwitcher.name.none": "Restaurant",
 
   "boot.title": "Opening Mise",
   "boot.subtitle": "Loading the restaurant workspace.",
@@ -2333,6 +2334,7 @@ const es = {
   "screen.currentRestaurant": "Restaurante actual: {restaurant}",
   "screen.openRestaurantSettings": "Abrir los ajustes de {restaurant}",
   "screen.openRestaurantSettingsHint": "Abre los ajustes del restaurante y la selección de espacio de trabajo",
+  "screen.restaurantSwitcher.name.none": "Restaurante",
 
   "boot.title": "Abriendo Mise",
   "boot.subtitle": "Cargando el espacio de trabajo del restaurante.",
@@ -4627,6 +4629,7 @@ const zhHans = {
   "screen.currentRestaurant": "当前餐厅：{restaurant}",
   "screen.openRestaurantSettings": "打开 {restaurant} 的餐厅设置",
   "screen.openRestaurantSettingsHint": "打开餐厅设置和工作区选择",
+  "screen.restaurantSwitcher.name.none": "餐厅",
 
   "boot.title": "正在打开 Mise",
   "boot.subtitle": "正在加载餐厅工作区。",
