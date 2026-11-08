@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, conceptTypography, iconStroke, radii } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
+import { normalizeRestaurantSwitcherDisplayName } from "../../services/domain/presentationRestaurantSwitcherDisplayNameIdentity";
 
 /**
  * Compact restaurant chip that sits directly under the Mise wordmark.
@@ -15,6 +16,15 @@ import { useLocale } from "../../contexts/LocaleContext";
 export function RestaurantSwitcher({ name }: { name: string }) {
   const { t } = useLocale();
 
+  // MISE-005ZN: soft-null blank / Unicode-padded / control-bearing restaurant
+  // names before RestaurantSwitcher chip display Text. Soft-null falls through
+  // to screen.restaurantSwitcher.name.none without inventing clean restaurant
+  // identity from NBSP/em-space padding. Leave a11y `name` interpolation
+  // (#1079 / MISE-005XS), Autonomy subtitle restaurant.name (#1043), Home
+  // greeting restaurant.name (#1044), Ask Mise restaurant.name (#1045), and
+  // Today screen title restaurant name (#968) alone.
+  const restaurantSwitcherDisplayName = normalizeRestaurantSwitcherDisplayName(name);
+
   return (
     <View style={styles.row}>
       <Pressable
@@ -25,7 +35,7 @@ export function RestaurantSwitcher({ name }: { name: string }) {
         style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
       >
         <Text numberOfLines={1} style={styles.label}>
-          {name}
+          {restaurantSwitcherDisplayName || t("screen.restaurantSwitcher.name.none")}
         </Text>
         <ChevronDown size={13} color={colors.muted} strokeWidth={iconStroke} />
       </Pressable>
