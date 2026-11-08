@@ -186,15 +186,24 @@ export class RecalculationTimeoutError extends Error {
 export function withTimeout<T>(work: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return work;
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new RecalculationTimeoutError(message)), timeoutMs);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new RecalculationTimeoutError(message));
+    }, timeoutMs);
     // Never let a pending recalculation hold the process open.
     timer.unref?.();
     work.then(
       (value) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         resolve(value);
       },
       (error) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         reject(error);
       }
