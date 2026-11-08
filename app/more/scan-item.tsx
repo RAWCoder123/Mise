@@ -15,6 +15,7 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
+import { normalizeScanItemRowCategory } from "../../services/domain/presentationScanItemRowCategoryIdentity";
 import { fetchInventoryItems } from "../../services/miseService";
 import type { InventoryItem } from "../../types/mise";
 
@@ -249,21 +250,37 @@ export default function ScanItemScreen() {
           />
         ) : (
           <View style={styles.list}>
-            {listItems.map((item) => (
-              <OperationalRow
-                key={item.id}
-                density="operational"
-                title={item.item_name}
-                subtitle={t("scanItem.row.meta", {
-                  category: item.category,
-                  code: item.id
-                })}
-                value={`${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${item.unit}`}
-                icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
-                onPress={() => router.push(`/inventory/${item.id}`)}
-                accessibilityLabel={t("scanItem.row.accessibility", { item: item.item_name })}
-              />
-            ))}
+            {listItems.map((item) => {
+              // MISE-005AAE: pin Scan Item row meta item.category to ASCII C.
+              // Soft-null / Unicode-padded categories fall through to
+              // scanItem.row.category.none without inventing clean category
+              // identity from NBSP/em-space padding, and without letting
+              // Unicode-only space or empty string render a blank-looking
+              // category before the code separator. Leave Scan Item row
+              // item.item_name (#1061), Inventory detail subtitle category
+              // (#1189), Inventory categoryIcon classify (#701), setup POS
+              // itemName/category (#872), Square catalog category (#952),
+              // and Scan Item search/filter haystack matching alone.
+              const displayCategory =
+                normalizeScanItemRowCategory(item.category) ||
+                t("scanItem.row.category.none");
+
+              return (
+                <OperationalRow
+                  key={item.id}
+                  density="operational"
+                  title={item.item_name}
+                  subtitle={t("scanItem.row.meta", {
+                    category: displayCategory,
+                    code: item.id
+                  })}
+                  value={`${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${item.unit}`}
+                  icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
+                  onPress={() => router.push(`/inventory/${item.id}`)}
+                  accessibilityLabel={t("scanItem.row.accessibility", { item: item.item_name })}
+                />
+              );
+            })}
           </View>
         )}
 
