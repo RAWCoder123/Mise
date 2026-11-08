@@ -9,6 +9,7 @@ import {
   purchaseAuthorityBlockerMessageKey,
   type PurchaseAuthorityResult
 } from "../services/domain/purchaseAuthority";
+import { normalizeRecommendationDecisionRowSuggestedUnit } from "../services/domain/presentationRecommendationDecisionRowSuggestedUnitIdentity";
 import type { MessageKey } from "../i18n/catalog";
 import type { PurchaseRecommendation } from "../types/mise";
 import type { PurchaseDecisionPattern } from "../services/domain/purchaseDecisionMemory";
@@ -71,6 +72,20 @@ export function RecommendationDecisionRow({
     ? (`orders.memory.outcome.${purchaseDecisionPattern.dominantOutcome}` as MessageKey)
     : null;
 
+  // MISE-005AAI: pin RecommendationDecisionRow recommendation.unit to ASCII C.
+  // Soft-null / Unicode-padded units fall through to
+  // orders.recommendation.unit.none without inventing clean unit identity from
+  // NBSP/em-space padding, and without letting Unicode-only space or empty
+  // string render blank-looking suggested / quantity unit copy. Leave
+  // RecommendationDecisionRow item_name (#1055), RecommendationDecisionRow
+  // reason (#1182), Inventory hub quantity unit (#1192), Inventory detail unit
+  // (#1191), Scan Item quantity unit (#1193), setup inventory units (#861),
+  // inventory recipe-mapping units (#864), inventory unit client helpers
+  // (#669), and controlled inventory.ops.unit canonical labels alone.
+  const suggestedDisplayUnit =
+    normalizeRecommendationDecisionRowSuggestedUnit(recommendation.unit) ||
+    t("orders.recommendation.unit.none");
+
   return (
     <View style={[styles.row, showDivider && styles.rowDivider, busy && styles.rowBusy]}>
       <View style={styles.heading}>
@@ -118,7 +133,7 @@ export function RecommendationDecisionRow({
           <Text style={styles.reasonMeta}>
             {t("orders.recommendation.suggested", {
               quantity: suggestedQuantity,
-              unit: recommendation.unit
+              unit: suggestedDisplayUnit
             })}
           </Text>
         </View>
@@ -182,7 +197,7 @@ export function RecommendationDecisionRow({
           <Text style={styles.quantityHint}>
             {t("orders.recommendation.suggested", {
               quantity: suggestedQuantity,
-              unit: recommendation.unit
+              unit: suggestedDisplayUnit
             })}
           </Text>
         </View>
@@ -192,13 +207,13 @@ export function RecommendationDecisionRow({
             accessibilityLabel={t("orders.recommendation.quantityReadOnlyAccessibility", {
               item: recommendation.item_name,
               quantity,
-              unit: recommendation.unit
+              unit: suggestedDisplayUnit
             })}
             accessibilityState={{ disabled: true }}
             style={styles.readOnlyQuantity}
           >
             <Text style={styles.readOnlyQuantityValue}>{quantity}</Text>
-            <Text style={styles.unit}>{recommendation.unit}</Text>
+            <Text style={styles.unit}>{suggestedDisplayUnit}</Text>
           </View>
         ) : (
           <View style={[styles.inputWrap, error && styles.inputWrapError]}>
@@ -214,7 +229,7 @@ export function RecommendationDecisionRow({
               selectTextOnFocus
               style={styles.quantityInput}
             />
-            <Text style={styles.unit}>{recommendation.unit}</Text>
+            <Text style={styles.unit}>{suggestedDisplayUnit}</Text>
           </View>
         )}
       </View>
