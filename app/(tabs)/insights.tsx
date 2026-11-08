@@ -36,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeInsightsInsightTitle } from "../../services/domain/presentationInsightsInsightTitleIdentity";
 import {
   presentInsight,
   presentLearningMemory,
@@ -892,7 +893,17 @@ function InsightListRow({ insight, divided }: { insight: Insight; divided: boole
       </View>
       <View style={styles.insightCopy}>
         <View style={styles.insightTitleRow}>
-          <Text style={styles.insightTitle}>{presentation.title}</Text>
+          {/* MISE-005ZZ: pin InsightListRow presentation.title display to
+              ASCII C. Structured insight.rule.* titles embed free-form item /
+              menu names; Unicode-padded / Unicode-only-space copy invents via
+              trim / truthy always-pass insightTitle Text. Soft-null to
+              insights.insight.title.none without inventing clean InsightListRow
+              titles. Leave description / whyItMatters / recommendedAction raw
+              on this tip. */}
+          <Text style={styles.insightTitle}>
+            {normalizeInsightsInsightTitle(presentation.title) ||
+              t("insights.insight.title.none")}
+          </Text>
           <Text style={[styles.severityLabel, isUrgent && styles.severityDanger, isWatch && styles.severityWatch]}>
             {labelForFilter(t, insight.severity)}
           </Text>
