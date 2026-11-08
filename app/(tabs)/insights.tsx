@@ -36,6 +36,7 @@ import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
+import { normalizeInsightsInsightWhyItMatters } from "../../services/domain/presentationInsightsInsightWhyItMattersIdentity";
 import {
   presentInsight,
   presentLearningMemory,
@@ -880,6 +881,13 @@ function InsightListRow({ insight, divided }: { insight: Insight; divided: boole
   const presentation = presentInsight(locale, insight);
   const isUrgent = insight.severity === "urgent";
   const isWatch = insight.severity === "warning";
+  // MISE-005AAB: pin InsightListRow presentation.whyItMatters display to
+  // ASCII C. Opaque presentInsight embeds free-form insight.why_it_matters
+  // into an evidence-prefixed string; Unicode-padded / Unicode-only-space
+  // copy invents via trim / truthy insightEvidence gate. Soft-null closes
+  // the gate (hide) without inventing clean InsightListRow why copy. Leave
+  // title / description / recommendedAction raw on this tip.
+  const whyItMatters = normalizeInsightsInsightWhyItMatters(presentation.whyItMatters);
 
   return (
     <View style={[styles.insightRow, divided && styles.dividedRow]}>
@@ -898,10 +906,10 @@ function InsightListRow({ insight, divided }: { insight: Insight; divided: boole
           </Text>
         </View>
         <Text style={styles.insightDescription}>{presentation.description}</Text>
-        {presentation.whyItMatters ? (
+        {whyItMatters ? (
           <Text style={styles.insightEvidence}>
             <Text style={styles.insightEvidenceLabel}>{t("insights.whyItMatters")}</Text>
-            {presentation.whyItMatters}
+            {whyItMatters}
           </Text>
         ) : null}
         <View style={[styles.actionLine, isUrgent && styles.actionLineDanger]}>
