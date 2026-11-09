@@ -30,6 +30,7 @@ import { RetryNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizeDailyReportDayRestaurantName } from "../../services/domain/presentationDailyReportDayRestaurantNameIdentity";
 import {
   fetchDailyOpsReport,
   type DailyOpsReport
@@ -148,7 +149,22 @@ export default function DailyReportScreen() {
             />
             <Card>
               <Text style={styles.closeoutEyebrow}>{t("dailyReport.closeout.eyebrow")}</Text>
-              <Text style={styles.closeoutTitle}>{visibleReport.day.restaurantName}</Text>
+              <Text style={styles.closeoutTitle}>
+                {(() => {
+                  // MISE-005ABG: pin Daily Report closeout day.restaurantName to ASCII C.
+                  // Soft-null empty / Unicode-padded / unsafe restaurant names so
+                  // blank-looking or Unicode-trimmed restaurant identity cannot invent
+                  // clean closeout title text. Leave Daily Report Badge day.miseStatus
+                  // (#1215), Ask Mise briefing.lead restaurant.name (#1211), Ask Mise
+                  // thinkingSteps restaurant.name (#1210), Daily Report
+                  // operatingSummary / date Badge, and learning.credibilityLabel
+                  // (#1203) alone.
+                  const restaurantName = normalizeDailyReportDayRestaurantName(
+                    visibleReport.day.restaurantName
+                  );
+                  return restaurantName || t("dailyReport.day.restaurantName.none");
+                })()}
+              </Text>
               <Text style={styles.summaryCopy}>{visibleReport.day.operatingSummary}</Text>
               <View style={styles.badgeRow}>
                 <Badge label={visibleReport.day.miseStatus} tone="warning" />
