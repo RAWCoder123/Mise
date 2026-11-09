@@ -1,5 +1,6 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
+import { normalizeAskMisePresentedInsightTitle } from "../domain/presentationAskMisePresentedInsightTitleIdentity";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
@@ -156,15 +157,24 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "sales": {
+      // MISE-005ABB: pin Ask Mise answer-text presentedInsight.title to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe presentInsight(...).title
+      // values to ask.answer.presentedInsightTitle.none without inventing
+      // clean insight title copy via Unicode trim before sales `{insight}`
+      // interpolation. Leave Insights InsightListRow presentation.title
+      // (#1185), Ask Mise prep / waste insight-title joins (#1212),
+      // attentionTitles (#1209), and topTaskTitles (#1164) alone.
+      const salesInsightTitle = presentedInsight
+        ? normalizeAskMisePresentedInsightTitle(presentedInsight.title) ||
+          t("ask.answer.presentedInsightTitle.none")
+        : null;
       const answer = [
         t("ask.answer.sales", {
           sales: helpers.formatCompactCurrency(summary.salesToday, summary.restaurantCurrency),
           count: helpers.formatNumber(summary.itemsSold)
         }),
         topSale ? t("ask.answer.sales.topItem", { item: topSale }) : null,
-        presentedInsight && presentedInsight.title
-          ? t("ask.answer.sales.insight", { insight: presentedInsight.title })
-          : null
+        salesInsightTitle ? t("ask.answer.sales.insight", { insight: salesInsightTitle }) : null
       ]
         .filter(Boolean)
         .join(" ");
@@ -186,8 +196,16 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
           priorities: []
         };
       }
+      // MISE-005ABB: pin Ask Mise answer-text presentedInsight.title to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe titles to
+      // ask.answer.presentedInsightTitle.none without inventing clean insight
+      // identity via Unicode trim before priorities `{insight}` interpolation.
       const insightTail = presentedInsight
-        ? t("ask.answer.prioritiesInsight", { insight: presentedInsight.title })
+        ? t("ask.answer.prioritiesInsight", {
+            insight:
+              normalizeAskMisePresentedInsightTitle(presentedInsight.title) ||
+              t("ask.answer.presentedInsightTitle.none")
+          })
         : t("ask.answer.prioritiesNoInsight");
       return {
         intent,
@@ -198,6 +216,15 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "briefing": {
+      // MISE-005ABB: pin Ask Mise answer-text presentedInsight.title to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe titles to
+      // ask.answer.presentedInsightTitle.none without inventing clean insight
+      // identity via Unicode trim before briefing `{insight}` interpolation.
+      // Leave Ask Mise briefing.lead restaurant.name (#1211) alone.
+      const briefingInsightTitle = presentedInsight
+        ? normalizeAskMisePresentedInsightTitle(presentedInsight.title) ||
+          t("ask.answer.presentedInsightTitle.none")
+        : null;
       const answer = [
         t("ask.answer.briefing.lead", {
           restaurant: restaurant.name,
@@ -212,8 +239,8 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
         topTaskTitles.length > 0
           ? t("ask.answer.briefing.focus", { tasks: topTaskTitles.join("; ") })
           : t("ask.answer.fallback"),
-        presentedInsight
-          ? t("ask.answer.prioritiesInsight", { insight: presentedInsight.title })
+        briefingInsightTitle
+          ? t("ask.answer.prioritiesInsight", { insight: briefingInsightTitle })
           : null
       ]
         .filter(Boolean)
