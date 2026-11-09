@@ -14,6 +14,7 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import { normalizeDailyBriefBoardAffectedWorkflow } from "../../services/domain/presentationDailyBriefBoardAffectedWorkflowIdentity";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -245,7 +246,20 @@ function FindingCard({
           count: formatNumber(evidenceCount)
         })}
       </Text>
-      <Text style={styles.meta}>{t("dailyBrief.workflow", { workflow: finding.affectedWorkflow })}</Text>
+      <Text style={styles.meta}>
+        {t("dailyBrief.workflow", {
+          // MISE-005AAQ: pin Daily Brief Board finding.affectedWorkflow to
+          // ASCII C. Soft-null empty / Unicode-padded / control-bearing
+          // free-form workflow tokens to dailyBrief.workflow.none without
+          // inventing clean workflow identity from padding, and without
+          // letting Unicode-only space render blank-looking workflow copy
+          // through the prior always-pass `finding.affectedWorkflow`
+          // interpolation.
+          workflow:
+            normalizeDailyBriefBoardAffectedWorkflow(finding.affectedWorkflow) ||
+            t("dailyBrief.workflow.none")
+        })}
+      </Text>
       {finding.freshness.missingData.length > 0 ? (
         <Text style={styles.missing}>
           {t("dailyBrief.missingData", { items: finding.freshness.missingData.join(", ") })}
