@@ -20,8 +20,10 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivityTriggerReference } from "../../services/domain/presentationActivityTriggerReferenceIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
+
 
 const dateRanges: ActivityDateRange[] = ["all", "today", "yesterday", "this_week"];
 
@@ -156,6 +158,18 @@ export default function ActivityHistoryScreen() {
 
         {visible.map((event) => {
           const expanded = Boolean(expandedIds[event.id]);
+          // MISE-005AAL: pin Activity triggerReference to ASCII C.
+          // Soft-null empty / Unicode-padded / unsafe correlation refs so
+          // trigger detail copy cannot invent a clean reference via Unicode
+          // String#trim or render blank-looking correlation identity through
+          // the prior always-pass truthy `event.triggerReference ?` suffix.
+          // Soft-null restores the omit-reference trigger-type-only fallback.
+          // Leave relatedEntityId display, event.category, Activity title/
+          // summary i18n (#271), Activity hub label i18n (#239), and
+          // activity_events.trigger_reference cntrl CHECK (#571) alone.
+          const activityTriggerDisplayReference = normalizeActivityTriggerReference(
+            event.triggerReference
+          );
           return (
             <Pressable
               key={event.id}
@@ -193,7 +207,9 @@ export default function ActivityHistoryScreen() {
                   <View style={styles.details}>
                     <Text style={styles.detailLine}>
                       {t("activity.detail.trigger")}: {event.triggerType}
-                      {event.triggerReference ? ` · ${event.triggerReference}` : ""}
+                      {activityTriggerDisplayReference
+                        ? ` · ${activityTriggerDisplayReference}`
+                        : ""}
                     </Text>
                     {event.relatedEntityType ? (
                       <Text style={styles.detailLine}>
