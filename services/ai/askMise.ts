@@ -1,5 +1,6 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
+import { normalizeAskMiseAnswerAttentionTitle } from "../domain/presentationAskMiseAnswerAttentionTitleIdentity";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
@@ -86,7 +87,17 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const presentedInsight = topInsight ? presentInsight(helpers.locale, topInsight) : null;
   const prepInsights = insights.filter((insight) => insight.insight_type === "prep" || insight.insight_type === "sales");
   const wasteInsights = insights.filter((insight) => insight.insight_type === "waste");
-  const attentionTitles = summary.attentionCards.slice(0, 3).map((card) => card.title);
+  // MISE-005AAX: pin Ask Mise answer-text attentionTitles to ASCII C.
+  // Soft-null empty / Unicode-padded / unsafe attention-card titles to
+  // ask.answer.attentionTitle.none without inventing clean title copy via
+  // Unicode trim before stock / orders `{items}` interpolation. Leave Home
+  // ApprovalsSection card.title (#1049), Ask Mise answer-text topTaskTitles
+  // (#1164), Ask Mise priority-card display (#1163), greeting restaurant.name
+  // (#1045), and greeting firstName (#961) alone.
+  const attentionTitles = summary.attentionCards.slice(0, 3).map(
+    (card) =>
+      normalizeAskMiseAnswerAttentionTitle(card.title) || t("ask.answer.attentionTitle.none")
+  );
   const topTaskTitles = priorities.map((task) => presentOperationalTodayTask(helpers.locale, task).title);
   const topSale = summary.topItems[0]?.item_name?.trim() || null;
 
