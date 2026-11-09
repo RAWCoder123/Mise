@@ -12,12 +12,14 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizePosMappingsChoiceListCategory } from "../../services/domain/presentationPosMappingsChoiceListCategoryIdentity";
 import {
   fetchPosMappingReviewQueue,
   reviewPosCatalogMapping,
   type PosMappingReviewQueue
 } from "../../services/miseService";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+// MISE-005AAU: pin POS mappings choice-list menuItem.category to ASCII C.
 
 export default function PosMappingsScreen() {
   const navigation = useNavigation();
@@ -231,6 +233,11 @@ export default function PosMappingsScreen() {
                     <View style={styles.choiceList} accessibilityRole="radiogroup">
                       {queue.menuItems.map((menuItem) => {
                         const selected = selectedMenuItemId === menuItem.id;
+                        // MISE-005AAU: soft-null Unicode-padded / blank-looking categories
+                        // so the intentional hide path owns empty choice-list meta.
+                        const choiceListCategory = normalizePosMappingsChoiceListCategory(
+                          menuItem.category
+                        );
                         return (
                           <Pressable
                             key={menuItem.id}
@@ -252,7 +259,9 @@ export default function PosMappingsScreen() {
                             </View>
                             <View style={styles.mappingCopy}>
                               <Text style={styles.choiceValue}>{menuItem.name}</Text>
-                              {menuItem.category ? <Text style={styles.mappingMeta}>{menuItem.category}</Text> : null}
+                              {choiceListCategory ? (
+                                <Text style={styles.mappingMeta}>{choiceListCategory}</Text>
+                              ) : null}
                             </View>
                           </Pressable>
                         );
