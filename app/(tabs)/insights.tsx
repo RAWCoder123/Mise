@@ -20,6 +20,7 @@ import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDe
 import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
 import type { InsightsSalesAnalytics } from "../../services/domain/insightsSalesAnalytics";
+import { normalizeInsightsSourceMixLabel } from "../../services/domain/presentationInsightsSourceMixLabelIdentity";
 import {
   fetchDailyOperationalBrief,
   fetchInsights,
@@ -525,11 +526,22 @@ function SalesAnalyticsBoard({
       color: donutPaletteColor(index)
     })) ?? [];
   const sourceSlices =
-    analytics?.sourceMix.map((slice, index) => ({
-      label: localizeMixLabel(slice.label, t),
-      value: slice.value,
-      color: donutPaletteColor(index + 2)
-    })) ?? [];
+    analytics?.sourceMix.map((slice, index) => {
+      // MISE-005AAS: pin Insights analytics sourceMix slice.label to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe source labels before
+      // DonutChart legend chrome so blank-looking or Unicode-trimmed source
+      // identity cannot invent clean POS source-mix legend text. Leave
+      // aggregation labels (#869), best-sellers itemName (#1196), categoryMix
+      // labels, providerSaleIdentity (#673), and profile/subtitle tips alone.
+      const sourceLabel = normalizeInsightsSourceMixLabel(slice.label);
+      return {
+        label: sourceLabel
+          ? localizeMixLabel(sourceLabel, t)
+          : t("insights.analytics.sourceMix.label.none"),
+        value: slice.value,
+        color: donutPaletteColor(index + 2)
+      };
+    }) ?? [];
   const unitsLabels =
     analytics?.unitsTrend.map((point) =>
       point.date.slice(5).replace("-", "/")
