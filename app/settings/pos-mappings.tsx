@@ -12,12 +12,15 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizePosMappingsExternalName } from "../../services/domain/presentationPosMappingsExternalNameIdentity";
 import {
   fetchPosMappingReviewQueue,
   reviewPosCatalogMapping,
   type PosMappingReviewQueue
 } from "../../services/miseService";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+
+// MISE-005ABE: pin POS mappings card-header mapping.externalName to ASCII C.
 
 export default function PosMappingsScreen() {
   const navigation = useNavigation();
@@ -185,6 +188,10 @@ export default function PosMappingsScreen() {
               const selectedMenuItem = selectedMenuItemId ? menuById.get(selectedMenuItemId) : null;
               const expanded = expandedMappingId === mapping.id;
               const busy = busyMappingId === mapping.id;
+              // Soft-null empty / Unicode-padded / control-bearing external
+              // catalog names so localized common.none owns blank-looking
+              // card-header primary chrome.
+              const mappingExternalName = normalizePosMappingsExternalName(mapping.externalName);
               return (
                 <Card key={mapping.id}>
                   <View style={styles.mappingHeader}>
@@ -193,7 +200,9 @@ export default function PosMappingsScreen() {
                     </View>
                     <View style={styles.mappingCopy}>
                       <Text style={styles.location}>{mapping.locationName}</Text>
-                      <Text style={styles.mappingName}>{mapping.externalName}</Text>
+                      <Text style={styles.mappingName}>
+                        {mappingExternalName || t("common.none")}
+                      </Text>
                       <Text style={styles.mappingMeta} numberOfLines={1}>
                         {t("pos.mappings.variation", { value: mapping.externalVariationId })}
                       </Text>
