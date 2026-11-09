@@ -1,5 +1,6 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
+import { normalizeAskMiseBriefingLeadRestaurantName } from "../domain/presentationAskMiseBriefingLeadRestaurantNameIdentity";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
@@ -198,11 +199,26 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "briefing": {
+      // MISE-005AAZ: pin Ask Mise answer-text briefing.lead restaurant.name to
+      // ASCII C. Soft-null empty / Unicode-padded / unsafe restaurant names to
+      // ask.answer.briefing.lead.none without inventing clean restaurant
+      // identity via Unicode trim before ask.answer.briefing.lead
+      // interpolation. Leave Ask Mise greeting.body restaurant.name (#1045),
+      // greeting firstName (#961), thinkingSteps restaurant.name (#1210),
+      // Home/Autonomy/Memory subtitle restaurant-name tips, and Ask Mise
+      // attentionTitles (#1209) / topTaskTitles (#1164) alone.
+      const briefingLeadRestaurantName = normalizeAskMiseBriefingLeadRestaurantName(
+        restaurant.name
+      );
       const answer = [
-        t("ask.answer.briefing.lead", {
-          restaurant: restaurant.name,
-          status: summary.miseStatus
-        }),
+        briefingLeadRestaurantName
+          ? t("ask.answer.briefing.lead", {
+              restaurant: briefingLeadRestaurantName,
+              status: summary.miseStatus
+            })
+          : t("ask.answer.briefing.lead.none", {
+              status: summary.miseStatus
+            }),
         t("ask.answer.briefing.board", {
           tasks: helpers.formatNumber(openTasks.length),
           stock: helpers.formatNumber(stockRisk),
