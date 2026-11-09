@@ -32,6 +32,7 @@ import {
   queueOperationalFindingDecision,
   summarizeInsights
 } from "../../services/miseService";
+import { normalizeInsightsBestSellersItemName } from "../../services/domain/presentationInsightsBestSellersItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -594,7 +595,19 @@ function SalesAnalyticsBoard({
                   </View>
                   <View style={styles.sellerCopy}>
                     <Text style={styles.sellerName} numberOfLines={1}>
-                      {item.itemName}
+                      {/*
+                        MISE-005AAK: pin Insights analytics best-sellers
+                        item.itemName to ASCII C. Soft-null empty /
+                        Unicode-padded / control-bearing names before
+                        seller-name chrome so padding cannot invent a clean
+                        item identity and blank-looking names fall through to
+                        localized insights.analytics.bestSellers.itemName.none.
+                        Leave Daily Report sales top-sellers (#1063), React
+                        list keys, InsightListRow title (#1185), and Ask Mise
+                        top-sale names (#937) alone.
+                      */}
+                      {normalizeInsightsBestSellersItemName(item.itemName) ||
+                        t("insights.analytics.bestSellers.itemName.none")}
                     </Text>
                     <Text style={styles.sellerMeta}>
                       {t("insights.analytics.bestSellers.meta", {
