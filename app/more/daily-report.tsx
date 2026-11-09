@@ -43,6 +43,7 @@ import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
 } from "../../services/domain/wasteAnalysis";
+import { normalizeDailyReportDayMiseStatus } from "../../services/domain/presentationDailyReportDayMiseStatusIdentity";
 
 function BackAction() {
   const { t } = useLocale();
@@ -151,7 +152,23 @@ export default function DailyReportScreen() {
               <Text style={styles.closeoutTitle}>{visibleReport.day.restaurantName}</Text>
               <Text style={styles.summaryCopy}>{visibleReport.day.operatingSummary}</Text>
               <View style={styles.badgeRow}>
-                <Badge label={visibleReport.day.miseStatus} tone="warning" />
+                <Badge
+                  label={(() => {
+                    // MISE-005ABD: pin Daily Report Badge day.miseStatus to ASCII C.
+                    // Soft-null empty / Unicode-padded / unsafe miseStatus values so
+                    // blank-looking or Unicode-trimmed status identity cannot invent
+                    // clean Badge label text. Leave Ask Mise briefing.lead status
+                    // (#1214), Ask Mise briefing.lead restaurant.name (#1211), Daily
+                    // Report restaurantName / operatingSummary, the closeout date
+                    // Badge, learning.credibilityLabel (#1203), and Ask Mise /
+                    // Daily Report miseStatus i18n (#264 / #256) alone.
+                    const miseStatus = normalizeDailyReportDayMiseStatus(
+                      visibleReport.day.miseStatus
+                    );
+                    return miseStatus || t("dailyReport.day.miseStatus.none");
+                  })()}
+                  tone="warning"
+                />
                 <Badge
                   label={t("dailyReport.closeout.dateBadge", {
                     date: visibleReport.day.operatingDate
