@@ -1,5 +1,6 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
+import { normalizeAskMisePrepWasteInsightTitle } from "../domain/presentationAskMisePrepWasteInsightTitleIdentity";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
@@ -227,9 +228,18 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "prep": {
-      const prepTitles = prepInsights
-        .slice(0, 3)
-        .map((insight) => presentInsight(helpers.locale, insight).title);
+      // MISE-005ABA: pin Ask Mise answer-text prepTitles to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe presentInsight(...).title
+      // values to ask.answer.prepWasteInsightTitle.none without inventing
+      // clean insight title copy via Unicode trim before prep `{items}`
+      // interpolation. Leave Insights InsightListRow presentation.title
+      // (#1185), Ask Mise attentionTitles (#1209), topTaskTitles (#1164), and
+      // sales / priorities / briefing presentedInsight.title alone.
+      const prepTitles = prepInsights.slice(0, 3).map(
+        (insight) =>
+          normalizeAskMisePrepWasteInsightTitle(presentInsight(helpers.locale, insight).title) ||
+          t("ask.answer.prepWasteInsightTitle.none")
+      );
       const answer =
         prepTitles.length > 0
           ? [
@@ -247,9 +257,18 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
       };
     }
     case "waste": {
-      const wasteTitles = wasteInsights
-        .slice(0, 3)
-        .map((insight) => presentInsight(helpers.locale, insight).title);
+      // MISE-005ABA: pin Ask Mise answer-text wasteTitles to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe presentInsight(...).title
+      // values to ask.answer.prepWasteInsightTitle.none without inventing
+      // clean insight title copy via Unicode trim before waste `{items}`
+      // interpolation. Leave Insights InsightListRow presentation.title
+      // (#1185) and Ask Mise sales / priorities / briefing
+      // presentedInsight.title alone.
+      const wasteTitles = wasteInsights.slice(0, 3).map(
+        (insight) =>
+          normalizeAskMisePrepWasteInsightTitle(presentInsight(helpers.locale, insight).title) ||
+          t("ask.answer.prepWasteInsightTitle.none")
+      );
       const answer =
         wasteTitles.length > 0
           ? [
