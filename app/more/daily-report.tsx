@@ -43,6 +43,7 @@ import type {
   WasteAnalysisAction,
   WasteAnalysisStatus
 } from "../../services/domain/wasteAnalysis";
+import { normalizeDailyReportLearningCredibilityLabel } from "../../services/domain/presentationDailyReportLearningCredibilityLabelIdentity";
 
 function BackAction() {
   const { t } = useLocale();
@@ -548,7 +549,24 @@ export default function DailyReportScreen() {
 
             <SectionHeader title={t("dailyReport.section.learning")} />
             <Card>
-              <Text style={styles.blockLabel}>{visibleReport.learning.credibilityLabel}</Text>
+              <Text style={styles.blockLabel}>
+                {(() => {
+                  // MISE-005AAR: pin Daily Report learning.credibilityLabel to ASCII C.
+                  // Soft-null empty / Unicode-padded / unsafe credibility labels so
+                  // blank-looking or Unicode-trimmed credibility identity cannot
+                  // invent clean blockLabel text. Leave credibilityNextStep (#1177),
+                  // memoryNextStep (#1176), memoryCopy (#1175), advice action.title
+                  // (#1173), action.detail (#1174), askBriefingText (#866), Daily
+                  // Report advice/credibility i18n (#258), and Insights
+                  // How-Mise-knows nextStep (#1171) alone.
+                  const credibilityLabel = normalizeDailyReportLearningCredibilityLabel(
+                    visibleReport.learning.credibilityLabel
+                  );
+                  return (
+                    credibilityLabel || t("dailyReport.learning.credibilityLabel.none")
+                  );
+                })()}
+              </Text>
               <Text style={styles.summaryCopy}>
                 {t("dailyReport.learning.score", {
                   score: formatNumber(visibleReport.learning.credibilityScore)
