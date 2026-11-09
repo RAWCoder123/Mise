@@ -20,6 +20,7 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivityRelatedEntityType } from "../../services/domain/presentationActivityRelatedEntityTypeIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -156,6 +157,21 @@ export default function ActivityHistoryScreen() {
 
         {visible.map((event) => {
           const expanded = Boolean(expandedIds[event.id]);
+          // MISE-005AAO: pin Activity relatedEntityType to ASCII C.
+          // Soft-null empty / Unicode-padded / unsafe related-entity types so
+          // related detail copy cannot invent a clean type via Unicode
+          // String#trim or render blank-looking related identity through the
+          // prior always-pass truthy `event.relatedEntityType ?` gate.
+          // Soft-null restores the omit-related fallback. Leave
+          // relatedEntityId display (#1198 / MISE-005AAM), actionId display
+          // (#1199 / MISE-005AAN), triggerReference display (#1197 /
+          // MISE-005AAL), event.category, triggerType,
+          // activity_events.related_entity_type cntrl CHECK (#572 /
+          // MISE-005FH), Activity title/summary i18n (#271), and Activity
+          // hub label i18n (#239) alone.
+          const activityRelatedDisplayEntityType = normalizeActivityRelatedEntityType(
+            event.relatedEntityType
+          );
           return (
             <Pressable
               key={event.id}
@@ -195,9 +211,10 @@ export default function ActivityHistoryScreen() {
                       {t("activity.detail.trigger")}: {event.triggerType}
                       {event.triggerReference ? ` · ${event.triggerReference}` : ""}
                     </Text>
-                    {event.relatedEntityType ? (
+                    {activityRelatedDisplayEntityType ? (
                       <Text style={styles.detailLine}>
-                        {t("activity.detail.related")}: {event.relatedEntityType.replace(/_/g, " ")}
+                        {t("activity.detail.related")}:{" "}
+                        {activityRelatedDisplayEntityType.replace(/_/g, " ")}
                         {event.relatedEntityId ? ` · ${event.relatedEntityId}` : ""}
                       </Text>
                     ) : null}
