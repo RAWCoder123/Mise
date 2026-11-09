@@ -12,12 +12,15 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizePosMappingsLocationName } from "../../services/domain/presentationPosMappingsLocationNameIdentity";
 import {
   fetchPosMappingReviewQueue,
   reviewPosCatalogMapping,
   type PosMappingReviewQueue
 } from "../../services/miseService";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+
+// MISE-005ABF: pin POS mappings card-header mapping.locationName to ASCII C.
 
 export default function PosMappingsScreen() {
   const navigation = useNavigation();
@@ -185,6 +188,10 @@ export default function PosMappingsScreen() {
               const selectedMenuItem = selectedMenuItemId ? menuById.get(selectedMenuItemId) : null;
               const expanded = expandedMappingId === mapping.id;
               const busy = busyMappingId === mapping.id;
+              // Soft-null empty / Unicode-padded / control-bearing location
+              // names so localized common.none owns blank-looking
+              // card-header location chrome.
+              const mappingLocationName = normalizePosMappingsLocationName(mapping.locationName);
               return (
                 <Card key={mapping.id}>
                   <View style={styles.mappingHeader}>
@@ -192,7 +199,9 @@ export default function PosMappingsScreen() {
                       <MapPin size={icon.row} color={colors.accentDark} strokeWidth={iconStroke} />
                     </View>
                     <View style={styles.mappingCopy}>
-                      <Text style={styles.location}>{mapping.locationName}</Text>
+                      <Text style={styles.location}>
+                        {mappingLocationName || t("common.none")}
+                      </Text>
                       <Text style={styles.mappingName}>{mapping.externalName}</Text>
                       <Text style={styles.mappingMeta} numberOfLines={1}>
                         {t("pos.mappings.variation", { value: mapping.externalVariationId })}
