@@ -20,8 +20,10 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivityRelatedEntityId } from "../../services/domain/presentationActivityRelatedEntityIdIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
+
 
 const dateRanges: ActivityDateRange[] = ["all", "today", "yesterday", "this_week"];
 
@@ -156,6 +158,19 @@ export default function ActivityHistoryScreen() {
 
         {visible.map((event) => {
           const expanded = Boolean(expandedIds[event.id]);
+          // MISE-005AAM: pin Activity relatedEntityId to ASCII C.
+          // Soft-null empty / Unicode-padded / unsafe related-entity ids so
+          // related-entity detail copy cannot invent a clean id via Unicode
+          // String#trim or render blank-looking related-entity identity
+          // through the prior always-pass truthy `event.relatedEntityId ?`
+          // suffix. Soft-null restores the omit-id related-entity-type-only
+          // fallback. Leave triggerReference display (#1197 / MISE-005AAL),
+          // event.category, Activity title/summary i18n (#271), Activity hub
+          // label i18n (#239), and activity_events.related_entity_id cntrl
+          // CHECK (#573) alone.
+          const activityRelatedDisplayEntityId = normalizeActivityRelatedEntityId(
+            event.relatedEntityId
+          );
           return (
             <Pressable
               key={event.id}
@@ -198,7 +213,9 @@ export default function ActivityHistoryScreen() {
                     {event.relatedEntityType ? (
                       <Text style={styles.detailLine}>
                         {t("activity.detail.related")}: {event.relatedEntityType.replace(/_/g, " ")}
-                        {event.relatedEntityId ? ` · ${event.relatedEntityId}` : ""}
+                        {activityRelatedDisplayEntityId
+                          ? ` · ${activityRelatedDisplayEntityId}`
+                          : ""}
                       </Text>
                     ) : null}
                     {event.actionId ? (
