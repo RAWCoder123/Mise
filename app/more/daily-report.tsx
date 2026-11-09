@@ -30,6 +30,7 @@ import { RetryNotice } from "../../components/ui/StatusNotice";
 import { colors, conceptTypography, icon, iconStroke, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizeDailyReportDayOperatingSummary } from "../../services/domain/presentationDailyReportDayOperatingSummaryIdentity";
 import {
   fetchDailyOpsReport,
   type DailyOpsReport
@@ -149,7 +150,24 @@ export default function DailyReportScreen() {
             <Card>
               <Text style={styles.closeoutEyebrow}>{t("dailyReport.closeout.eyebrow")}</Text>
               <Text style={styles.closeoutTitle}>{visibleReport.day.restaurantName}</Text>
-              <Text style={styles.summaryCopy}>{visibleReport.day.operatingSummary}</Text>
+              <Text style={styles.summaryCopy}>
+                {(() => {
+                  // MISE-005ABH: pin Daily Report closeout day.operatingSummary to ASCII C.
+                  // Soft-null empty / Unicode-padded / unsafe operating summaries so
+                  // blank-looking or Unicode-trimmed summary identity cannot invent
+                  // clean closeout summaryCopy. Multiline free-text prep preserves
+                  // LF/TAB/CR (operator_note parity). Leave Daily Report closeout
+                  // day.restaurantName (#1218), Daily Report Badge day.miseStatus
+                  // (#1215), Daily Report signal.line (#1179), advice action.detail
+                  // (#1174), learning memoryCopy (#1175), Ask Mise briefing.lead
+                  // status (#1214), the closeout date Badge, and operatingSummary
+                  // attention-template i18n (#257) alone.
+                  const operatingSummary = normalizeDailyReportDayOperatingSummary(
+                    visibleReport.day.operatingSummary
+                  );
+                  return operatingSummary || t("dailyReport.day.operatingSummary.none");
+                })()}
+              </Text>
               <View style={styles.badgeRow}>
                 <Badge label={visibleReport.day.miseStatus} tone="warning" />
                 <Badge
