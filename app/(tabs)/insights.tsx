@@ -20,6 +20,7 @@ import type { FindingDecisionOutboxEntry } from "../../services/domain/findingDe
 import type { DailyOperationalBrief, OperationalFinding } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
 import type { InsightsSalesAnalytics } from "../../services/domain/insightsSalesAnalytics";
+import { normalizeInsightsCategoryMixLabel } from "../../services/domain/presentationInsightsCategoryMixLabelIdentity";
 import {
   fetchDailyOperationalBrief,
   fetchInsights,
@@ -519,11 +520,23 @@ function SalesAnalyticsBoard({
   const maxSellerGross = Math.max(1, ...(analytics?.bestSellers.map((item) => item.grossSales) ?? [1]));
   const maxWeekday = Math.max(1, ...(analytics?.weekdayMix.map((slice) => slice.value) ?? [1]));
   const categorySlices =
-    analytics?.categoryMix.map((slice, index) => ({
-      label: localizeMixLabel(slice.label, t),
-      value: slice.value,
-      color: donutPaletteColor(index)
-    })) ?? [];
+    analytics?.categoryMix.map((slice, index) => {
+      // MISE-005AAT: pin Insights analytics categoryMix slice.label to ASCII C.
+      // Soft-null empty / Unicode-padded / unsafe category labels before
+      // DonutChart legend chrome so blank-looking or Unicode-trimmed category
+      // identity cannot invent clean category-mix legend text. Leave
+      // aggregation labels (#869), best-sellers itemName (#1196), sourceMix
+      // labels (#1204), providerSaleIdentity (#673), and profile/subtitle tips
+      // alone.
+      const categoryLabel = normalizeInsightsCategoryMixLabel(slice.label);
+      return {
+        label: categoryLabel
+          ? localizeMixLabel(categoryLabel, t)
+          : t("insights.analytics.categoryMix.label.none"),
+        value: slice.value,
+        color: donutPaletteColor(index)
+      };
+    }) ?? [];
   const sourceSlices =
     analytics?.sourceMix.map((slice, index) => ({
       label: localizeMixLabel(slice.label, t),
