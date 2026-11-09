@@ -20,6 +20,7 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivityTriggerType } from "../../services/domain/presentationActivityTriggerTypeIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -156,6 +157,21 @@ export default function ActivityHistoryScreen() {
 
         {visible.map((event) => {
           const expanded = Boolean(expandedIds[event.id]);
+          // MISE-005AAP: pin Activity triggerType to ASCII C.
+          // Soft-null empty / Unicode-padded / unsafe trigger types so
+          // trigger detail copy cannot invent a clean type via Unicode
+          // String#trim or render blank-looking trigger identity through
+          // the prior always-pass `event.triggerType` interpolation.
+          // Soft-null restores the empty-type fallback (`""`). Leave
+          // triggerReference display (#1197 / MISE-005AAL),
+          // relatedEntityType display (#1200 / MISE-005AAO),
+          // relatedEntityId display (#1198 / MISE-005AAM), actionId
+          // display (#1199 / MISE-005AAN), event.category / event.status,
+          // activity_events.trigger_type cntrl CHECK (#568 / MISE-005FD),
+          // Activity title/summary i18n (#271), and Activity hub label
+          // i18n (#239) alone.
+          const activityTriggerDisplayType =
+            normalizeActivityTriggerType(event.triggerType) ?? "";
           return (
             <Pressable
               key={event.id}
@@ -192,7 +208,7 @@ export default function ActivityHistoryScreen() {
                 {expanded ? (
                   <View style={styles.details}>
                     <Text style={styles.detailLine}>
-                      {t("activity.detail.trigger")}: {event.triggerType}
+                      {t("activity.detail.trigger")}: {activityTriggerDisplayType}
                       {event.triggerReference ? ` · ${event.triggerReference}` : ""}
                     </Text>
                     {event.relatedEntityType ? (
