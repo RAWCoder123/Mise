@@ -40,6 +40,7 @@ import {
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canDeleteRestaurantData, canManageRestaurantData } from "../../services/tenantAccess";
+import { normalizeOrdersDetailDeliveryEvidenceNotes } from "../../services/domain/ordersDetailDeliveryEvidenceNotesIdentity";
 import { SUPPLIER_NOTE_MAX_CHARACTERS } from "../../services/miseValidation";
 import type {
   RestaurantEmailConnection,
@@ -526,7 +527,19 @@ export default function OrderDraftDetailScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("orders.detail.deliveryEvidence.title")}</Text>
               <Text style={styles.sectionBody}>{t("orders.detail.deliveryEvidence.body")}</Text>
-              {visibleDeliveryEvidence.map((evidence) => (
+              {visibleDeliveryEvidence.map((evidence) => {
+                // MISE-005AAW: pin deliveryEvidence notes display to ASCII C.
+                // Soft-null / Unicode-padded / control-bearing notes fall
+                // through to the intentional hide branch without inventing a
+                // clean note body via Unicode `.trim()`, and without letting
+                // raw truthy Unicode-only space bypass that hide. Leave #835
+                // builder canonicalize, #1013 sent-note.none, #1010
+                // delivery-evidence timezone, and #670 receive discrepancy
+                // alone.
+                const deliveryEvidenceNotes = normalizeOrdersDetailDeliveryEvidenceNotes(
+                  evidence.notes
+                );
+                return (
                 <View key={evidence.deliveryId} style={styles.deliveryEvidencePanel}>
                   <View style={styles.deliveryEvidenceHeader}>
                     <Badge
@@ -563,11 +576,12 @@ export default function OrderDraftDetailScreen() {
                           { count: formatNumber(evidence.lineCount) }
                         )}
                   </Text>
-                  {evidence.notes ? (
-                    <Text style={styles.deliveryEvidenceNote}>{evidence.notes}</Text>
+                  {deliveryEvidenceNotes ? (
+                    <Text style={styles.deliveryEvidenceNote}>{deliveryEvidenceNotes}</Text>
                   ) : null}
                 </View>
-              ))}
+                );
+              })}
             </View>
           ) : null}
 
