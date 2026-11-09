@@ -20,6 +20,7 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivityActionId } from "../../services/domain/presentationActivityActionIdIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -156,6 +157,17 @@ export default function ActivityHistoryScreen() {
 
         {visible.map((event) => {
           const expanded = Boolean(expandedIds[event.id]);
+          // MISE-005AAN: pin Activity actionId to ASCII C.
+          // Soft-null empty / Unicode-padded / unsafe action ids so action
+          // detail copy cannot invent a clean id via Unicode String#trim or
+          // render blank-looking action identity through the prior
+          // always-pass truthy `event.actionId ?` gate. Soft-null restores
+          // the omit-action fallback. Leave relatedEntityId display
+          // (#1198 / MISE-005AAM), triggerReference display (#1197 /
+          // MISE-005AAL), event.category, triggerType, Mise-actions
+          // actionId tips (#761 / #772), Activity title/summary i18n
+          // (#271), and Activity hub label i18n (#239) alone.
+          const activityActionDisplayId = normalizeActivityActionId(event.actionId);
           return (
             <Pressable
               key={event.id}
@@ -201,9 +213,9 @@ export default function ActivityHistoryScreen() {
                         {event.relatedEntityId ? ` · ${event.relatedEntityId}` : ""}
                       </Text>
                     ) : null}
-                    {event.actionId ? (
+                    {activityActionDisplayId ? (
                       <Text style={styles.detailLine}>
-                        {t("activity.detail.action")}: {event.actionId}
+                        {t("activity.detail.action")}: {activityActionDisplayId}
                       </Text>
                     ) : null}
                     {event.evidenceReferences.length > 0 ? (
