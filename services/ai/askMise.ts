@@ -1,5 +1,6 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
+import { normalizeAskMiseThinkingRestaurantName } from "../domain/presentationAskMiseThinkingRestaurantNameIdentity";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
@@ -90,9 +91,17 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const topTaskTitles = priorities.map((task) => presentOperationalTodayTask(helpers.locale, task).title);
   const topSale = summary.topItems[0]?.item_name?.trim() || null;
 
+  // MISE-005AAY: pin Ask Mise thinkingSteps restaurant.name to ASCII C.
+  // Soft-null empty / Unicode-padded / unsafe restaurant names to
+  // ask.thinking.restaurant.none without inventing clean restaurant identity
+  // via Unicode trim before ask.thinking.restaurant interpolation. Leave Ask
+  // Mise greeting.body restaurant.name (#1045), greeting firstName (#961),
+  // answer-text briefing.lead restaurant.name, Home/Autonomy/Memory subtitle
+  // restaurant-name tips, and Ask Mise attentionTitles (#1209) / topTaskTitles
+  // (#1164) alone.
   const thinkingSteps = buildThinkingSteps({
     intent,
-    restaurantName: restaurant.name,
+    restaurantName: normalizeAskMiseThinkingRestaurantName(restaurant.name),
     openTaskCount: openTasks.length,
     stockRisk,
     pendingRecommendations: summary.pendingRecommendations,
@@ -304,7 +313,7 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
 
 function buildThinkingSteps(input: {
   intent: AskMiseIntent;
-  restaurantName: string;
+  restaurantName: string | null;
   openTaskCount: number;
   stockRisk: number;
   pendingRecommendations: number;
@@ -315,7 +324,9 @@ function buildThinkingSteps(input: {
   const { helpers, intent } = input;
   const { t } = helpers;
   const steps = [
-    t("ask.thinking.restaurant", { restaurant: input.restaurantName }),
+    input.restaurantName
+      ? t("ask.thinking.restaurant", { restaurant: input.restaurantName })
+      : t("ask.thinking.restaurant.none"),
     t("ask.thinking.board", {
       tasks: helpers.formatNumber(input.openTaskCount),
       stock: helpers.formatNumber(input.stockRisk),
