@@ -12,12 +12,14 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizePosMappingsChoiceListMenuItemName } from "../../services/domain/presentationPosMappingsChoiceListMenuItemNameIdentity";
 import {
   fetchPosMappingReviewQueue,
   reviewPosCatalogMapping,
   type PosMappingReviewQueue
 } from "../../services/miseService";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+// MISE-005AAV: pin POS mappings choice-list menuItem.name to ASCII C.
 
 export default function PosMappingsScreen() {
   const navigation = useNavigation();
@@ -231,6 +233,13 @@ export default function PosMappingsScreen() {
                     <View style={styles.choiceList} accessibilityRole="radiogroup">
                       {queue.menuItems.map((menuItem) => {
                         const selected = selectedMenuItemId === menuItem.id;
+                        // MISE-005AAV: soft-null Unicode-padded / blank-looking choice-list
+                        // names so localized common.none owns empty radio primary chrome.
+                        // Leave choice-list category (#1206) and suggestion/selected names
+                        // (#1024) alone.
+                        const choiceListName = normalizePosMappingsChoiceListMenuItemName(
+                          menuItem.name
+                        );
                         return (
                           <Pressable
                             key={menuItem.id}
@@ -251,7 +260,9 @@ export default function PosMappingsScreen() {
                               {selected ? <Check size={12} color={colors.surface} strokeWidth={3} /> : null}
                             </View>
                             <View style={styles.mappingCopy}>
-                              <Text style={styles.choiceValue}>{menuItem.name}</Text>
+                              <Text style={styles.choiceValue}>
+                                {choiceListName || t("common.none")}
+                              </Text>
                               {menuItem.category ? <Text style={styles.mappingMeta}>{menuItem.category}</Text> : null}
                             </View>
                           </Pressable>
