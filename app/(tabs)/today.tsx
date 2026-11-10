@@ -33,12 +33,15 @@ import {
   queueOperationalFindingDecision,
   type OperatorTask
 } from "../../services/miseService";
+import { normalizeTodayFloorNotesTitleDisplay } from "../../services/domain/presentationTodayFloorNotesTitleDisplayIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
+
+// MISE-005ABY: soft-null floor-notes display note.title before render.
 
 type TaskFilter = OperatingPlanBucket;
 type Translator = (key: MessageKey, values?: MessageValues) => string;
@@ -402,7 +405,10 @@ export default function TodayScreen() {
                           style={({ pressed }) => [styles.floorNoteMain, pressed && focusRoute && styles.pressed]}
                         >
                           <View style={styles.floorNoteCopy}>
-                            <Text style={styles.floorNoteTitle}>{note.title}</Text>
+                            <Text style={styles.floorNoteTitle}>
+                              {normalizeTodayFloorNotesTitleDisplay(note.title) ||
+                                t("today.floorNotes.noteTitle.none")}
+                            </Text>
                             {note.body ? (
                               <Text numberOfLines={2} style={styles.floorNoteDetail}>
                                 {note.body}
