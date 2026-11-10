@@ -69,6 +69,10 @@ import {
   normalizeInventoryEventRecord
 } from "../domain/inventoryEventTransport";
 import {
+  applyOperatorReceiptSupplierAttribution,
+  OPERATOR_RECEIPT_SOURCE
+} from "../domain/receiptSupplierAttribution";
+import {
   normalizeOperationalFindingDecision,
   operationalFindingDecisionRpcArguments
 } from "../domain/operationalFindingDecisions";
@@ -1247,14 +1251,38 @@ export function createSupabaseRepository(): MiseRepository {
     },
 
     async recordInventoryEvent(input) {
+      // Stamp durable supplier_id onto ad-hoc operator receipts before the RPC
+      // so idempotent retries compare equal metadata and the BEFORE INSERT
+      // validator sees authoritative attribution. Order-path receives are left alone.
+      let prepared = input;
+      if (input.eventType === "receipt" && input.source === OPERATOR_RECEIPT_SOURCE) {
+        const { data: itemRow, error: itemError } = await client
+          .from("inventory_items")
+          .select("supplier_id")
+          .eq("restaurant_id", input.restaurantId)
+          .eq("id", input.inventoryItemId)
+          .maybeSingle();
+        if (itemError) throwRepositoryError(itemError, input.restaurantId);
+        const attributed = applyOperatorReceiptSupplierAttribution({
+          eventType: input.eventType,
+          source: input.source,
+          metadata: input.metadata ?? {},
+          inventoryItemSupplierId: itemRow?.supplier_id
+        });
+        if (!attributed.ok) {
+          return { status: "rejected" as const, reason: attributed.reason };
+        }
+        prepared = { ...input, metadata: attributed.metadata };
+      }
+
       const { data, error } = await client.rpc(
         "record_inventory_event",
-        inventoryEventRpcArguments(input)
+        inventoryEventRpcArguments(prepared)
       );
       if (error) {
         const terminal = inventoryEventRejectionFromRpcError(error);
         if (terminal) return terminal;
-        throwRepositoryError(error, input.restaurantId);
+        throwRepositoryError(error, prepared.restaurantId);
       }
       return {
         status: "accepted",
