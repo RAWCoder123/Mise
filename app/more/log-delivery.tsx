@@ -84,6 +84,7 @@ export default function LogDeliveryScreen() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<InventoryItem | null>(null);
   const [quantityText, setQuantityText] = useState("");
+  const [expiresOnText, setExpiresOnText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -113,6 +114,7 @@ export default function LogDeliveryScreen() {
     setQuery("");
     setSelected(null);
     setQuantityText("");
+    setExpiresOnText("");
     setNoteText("");
     setMessage(null);
     setMessageIsError(false);
@@ -186,6 +188,7 @@ export default function LogDeliveryScreen() {
   function resetForm(keepSelection = false) {
     if (!keepSelection) setSelected(null);
     setQuantityText("");
+    setExpiresOnText("");
     setNoteText("");
     setMessage(null);
     setMessageIsError(false);
@@ -224,7 +227,8 @@ export default function LogDeliveryScreen() {
         quantity,
         canonicalUnit: selected.canonical_unit!,
         effectiveAt: new Date().toISOString(),
-        note: noteText.trim() || undefined
+        note: noteText.trim() || undefined,
+        expiresOn: expiresOnText.trim() || undefined
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
@@ -235,6 +239,7 @@ export default function LogDeliveryScreen() {
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
       setLastLoggedItemId(itemId);
       setQuantityText("");
+      setExpiresOnText("");
       setNoteText("");
       setSelected(null);
 
@@ -353,6 +358,11 @@ export default function LogDeliveryScreen() {
                       <Text style={styles.historyWhen}>
                         {formatWhen(entry.effectiveAt)}
                       </Text>
+                      {entry.expiresOn ? (
+                        <Text style={styles.historyWhen}>
+                          {t("logDelivery.history.expiresOn", { date: entry.expiresOn })}
+                        </Text>
+                      ) : null}
                       {entry.note ? (
                         <Text numberOfLines={2} style={styles.historyNote}>
                           {entry.note}
@@ -410,6 +420,7 @@ export default function LogDeliveryScreen() {
                       setMessageIsError(false);
                       setLastLoggedItemId(null);
                       setQuantityText("");
+                      setExpiresOnText("");
                       setNoteText("");
                     }}
                     accessibilityLabel={t("logDelivery.row.accessibility", { item: item.item_name })}
@@ -471,6 +482,20 @@ export default function LogDeliveryScreen() {
               value={quantityText}
               onChangeText={setQuantityText}
               keyboardType="decimal-pad"
+              style={styles.input}
+              editable={actionsEditable && isCanonicalUnitReady(selected)}
+            />
+
+            <SectionHeader title={t("logDelivery.field.expiresOn")} />
+            <TextInput
+              accessibilityLabel={t("logDelivery.field.expiresOn")}
+              placeholder={t("logDelivery.field.expiresOnPlaceholder")}
+              placeholderTextColor={colors.faint}
+              value={expiresOnText}
+              onChangeText={setExpiresOnText}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="numbers-and-punctuation"
               style={styles.input}
               editable={actionsEditable && isCanonicalUnitReady(selected)}
             />
