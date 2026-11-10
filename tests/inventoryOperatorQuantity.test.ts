@@ -154,6 +154,80 @@ test("queueInventoryPurchaseUnitOperation converts lb to grams before outbox wri
   }
 });
 
+test("count purchase zero converts to canonical zero and stockout skips purchase metadata", async () => {
+  const restore = setDeviceInventoryOutboxRepositoryForTesting(
+    createInventoryOutboxRepository(memoryStorage())
+  );
+  try {
+    const counted = await queueInventoryPurchaseUnitOperation({
+      restaurantId: "restaurant-a",
+      inventoryItemId: "chicken",
+      eventType: "count",
+      purchaseQuantity: 0,
+      item: verifiedItem,
+      effectiveAt: "2026-11-10T18:00:00.000Z"
+    });
+    assert.equal(counted.event.quantity, 0);
+    assert.equal(counted.event.metadata.purchase_unit_quantity, 0);
+    assert.equal(counted.event.metadata.purchase_unit, "lb");
+
+    const stockout = await queueInventoryPurchaseUnitOperation({
+      restaurantId: "restaurant-a",
+      inventoryItemId: "chicken",
+      eventType: "stockout",
+      purchaseQuantity: 99,
+      item: {
+        unit: "lb",
+        canonical_unit: "g",
+        canonical_quantity_per_unit: null,
+        canonical_unit_verification_status: "verified"
+      },
+      effectiveAt: "2026-11-10T18:00:00.000Z",
+      note: "Empty case"
+    });
+    assert.equal(stockout.event.quantity, 0);
+    assert.deepEqual(stockout.event.metadata, { note: "Empty case" });
+  } finally {
+    restore();
+  }
+});
+
+test("purchase-unit evidence is all-or-nothing and overflow fails closed", () => {
+  assert.throws(
+    () =>
+      requireInventoryOperation({
+        restaurantId: "restaurant-a",
+        inventoryItemId: "chicken",
+        eventType: "receipt",
+        quantity: 907.184,
+        canonicalUnit: "g",
+        effectiveAt: "2026-11-10T18:00:00.000Z",
+        purchaseUnitQuantity: 2,
+        purchaseUnit: "lb"
+      }),
+    /must include quantity, unit, and conversion/
+  );
+  assert.throws(
+    () =>
+      resolveOperatorPurchaseUnitQuantity({
+        purchaseQuantity: 2,
+        item: {
+          ...verifiedItem,
+          canonical_unit_verification_status: "draft"
+        }
+      }),
+    /not verified/
+  );
+  assert.throws(
+    () =>
+      purchaseUnitsToCanonicalOperatorQuantity({
+        purchaseQuantity: 1_000_000,
+        canonicalQuantityPerUnit: 1_000_000_000
+      }),
+    /outside supported limits/
+  );
+});
+
 test("inventory detail and Log Delivery collect purchase-unit quantities", () => {
   assert.match(identitySource, /purchaseUnitsToCanonicalOperatorQuantity/);
   assert.match(inventorySource, /queueInventoryPurchaseUnitOperation/);
