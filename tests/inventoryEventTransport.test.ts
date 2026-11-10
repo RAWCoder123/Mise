@@ -89,6 +89,13 @@ test("known database validation and conflict errors settle without blind retries
     }),
     { status: "rejected", reason: "invalid_canonical_unit" }
   );
+  assert.deepEqual(
+    inventoryEventRejectionFromRpcError({
+      code: "22023",
+      message: "On-hand is already zero; stockout would not change inventory"
+    }),
+    { status: "rejected", reason: "noop_stockout" }
+  );
 });
 
 test("transport and authorization failures remain retryable or surfaced", () => {

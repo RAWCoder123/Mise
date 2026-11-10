@@ -211,6 +211,11 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match ahead of the generic "quantity" branch — the hosted message names
+  // on-hand zeroing without using the word "quantity".
+  if (message.includes("already zero") || message.includes("stockout would not change")) {
+    return "noop_stockout";
+  }
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
