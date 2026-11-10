@@ -87,6 +87,7 @@ import {
   type InventoryEvent,
   type InventoryEventInput
 } from "../domain/inventoryLedger";
+import { rejectNoOpStockoutReason } from "../domain/stockoutNoOpGuard";
 import { isTemporallyValidCount } from "../domain/inventoryCountAuthority";
 import {
   PurchaseAuthorityBlockedError,
@@ -934,6 +935,16 @@ export function createLocalDemoRepository(): MiseRepository {
         projectedQuantity > 1_000_000
       ) {
         throw new Error("Inventory event would move on-hand outside supported limits");
+      }
+
+      // Settle no-op stockouts as terminal rejects so the device outbox does not
+      // retry forever. Hosted RPC raises the same message via BEFORE INSERT.
+      const noopStockoutReason = rejectNoOpStockoutReason({
+        eventType: input.eventType,
+        currentNativeQuantity: item.current_quantity
+      });
+      if (noopStockoutReason) {
+        return { status: "rejected" as const, reason: noopStockoutReason };
       }
 
       const acceptance = acceptInventoryEvent({
