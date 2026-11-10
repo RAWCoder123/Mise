@@ -15,6 +15,7 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { matchInventoryBarcode } from "../../services/domain/inventoryBarcodeMatch";
+import { normalizeScanItemRowAccessibilityItemName } from "../../services/domain/presentationScanItemRowAccessibilityItemNameIdentity";
 import { fetchInventoryItems } from "../../services/miseService";
 import type { InventoryItem } from "../../types/mise";
 
@@ -261,7 +262,21 @@ export default function ScanItemScreen() {
                 value={`${formatNumber(item.current_quantity, { maximumFractionDigits: 1 })} ${item.unit}`}
                 icon={<Package size={icon.row} color={colors.text} strokeWidth={iconStroke} />}
                 onPress={() => router.push(`/inventory/${item.id}`)}
-                accessibilityLabel={t("scanItem.row.accessibility", { item: item.item_name })}
+                accessibilityLabel={t("scanItem.row.accessibility", {
+                  // MISE-005ABP: pin Scan Item row a11y item.item_name to
+                  // ASCII C. Soft-null empty / Unicode-padded /
+                  // control-bearing names before scanItem.row.accessibility
+                  // interpolations so padding cannot invent a clean item
+                  // identity and blank-looking names fall through to
+                  // localized scanItem.row.accessibility.item.none. Leave
+                  // OperationalRow title={item.item_name} display (#1061),
+                  // Log Delivery pick-list/selected/history (#1059/#1060/
+                  // #1062), Log Delivery row a11y (#1226), and Waste
+                  // reviewItem a11y (#1073) alone.
+                  item:
+                    normalizeScanItemRowAccessibilityItemName(item.item_name) ||
+                    t("scanItem.row.accessibility.item.none")
+                })}
               />
             ))}
           </View>
