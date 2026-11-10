@@ -1,6 +1,7 @@
 import type { LearningMemorySignal, LearningMemorySummary } from "../../types/mise";
 import { createId } from "./miseDomain";
 import type { Outcome } from "./miseActions";
+import { normalizeRestaurantMemoryRuleTitleType } from "./restaurantMemoryRuleTitleIdentity";
 
 export type RestaurantMemoryType =
   | "demand_pattern"
@@ -283,10 +284,24 @@ export function convertMemoryToRule(memory: RestaurantMemory): RestaurantMemoryR
   if (memory.status === "forgotten" || memory.status === "dismissed") {
     throw new Error("Dismissed or forgotten memories cannot become rules.");
   }
+  // MISE-005ABX: pin convertMemoryToRule title under ASCII C.
+  // Soft-null empty / Unicode-padded / control-bearing / unknown memoryType
+  // tokens so the draft title cannot invent a clean type label via Unicode
+  // String#trim or render blank-looking title identity through the prior
+  // always-pass `memory.memoryType.replace` humanize. Soft-null restores the
+  // intentional "unknown" title fallthrough. Underscore→space humanize stays
+  // a post-normalize step on the safe token only. Leave Restaurant Memory hub
+  // memoryType localization (#1230 / MISE-005ABT), hub memory.status
+  // localization (#1231 / MISE-005ABU), statement (#830), correction draft
+  // (#848), evidence.summary (#1154), subtitle restaurant.name (#1042),
+  // scope/source (#841), Autonomy actionType leave-alone, and Activity
+  // recalculation cycle humanize (#1233 / MISE-005ABW) alone.
+  const restaurantMemoryRuleDisplayType =
+    normalizeRestaurantMemoryRuleTitleType(memory.memoryType) ?? "unknown";
   return {
     memoryId: memory.id,
     restaurantId: memory.restaurantId,
-    title: memory.memoryType.replace(/_/g, " "),
+    title: restaurantMemoryRuleDisplayType.replace(/_/g, " "),
     statement: memory.statement,
     enabled: false,
     sourceMemoryStatus: memory.status
