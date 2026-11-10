@@ -12,6 +12,7 @@ import { colors, conceptTypography, icon, iconStroke, radii } from "../../consta
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { RestaurantMemory } from "../../services/domain/restaurantMemory";
+import { resolveRestaurantMemoryStatusMessageKey } from "../../services/domain/presentationRestaurantMemoryStatusIdentity";
 import {
   convertRestaurantMemoryToSafeRule,
   fetchRestaurantMemories,
@@ -190,7 +191,8 @@ export default function RestaurantMemoryScreen() {
                 score: formatNumber(memory.confidence, { style: "percent", maximumFractionDigits: 0 })
               })}
               {" · "}
-              {memory.status}
+              {/* MISE-005ABU: localize Restaurant Memory memory.status under ASCII C. */}
+              {t(resolveRestaurantMemoryStatusMessageKey(memory.status))}
               {" · "}
               {t("memory.updated", {
                 date: formatDate(memory.lastUpdatedAt, { dateStyle: "medium", timeStyle: "short" })
