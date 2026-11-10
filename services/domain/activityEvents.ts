@@ -5,6 +5,7 @@ import type {
   PurchaseRecommendation,
   SupplierOrder
 } from "../../types/mise";
+import { normalizeActivityRecalculationCycle } from "./activityRecalculationCycleIdentity";
 import type { OperationalFinding } from "./operationalFindings";
 import type { AutonomyLevel } from "./operationalStatus";
 import type { RestaurantTask } from "./restaurantTasks";
@@ -388,6 +389,21 @@ export function fromRecalculationRunActivity(run: {
   // mid_shift and close successes stay in the ledger only.
   if (succeeded && run.cycle !== "daily_open") return null;
 
+  // MISE-005ABW: pin Activity recalculation cycle under ASCII C.
+  // Soft-null empty / Unicode-padded / unsafe cycles so failure-summary
+  // copy cannot invent a clean cycle label via Unicode String#trim or
+  // render blank-looking cycle identity through the prior always-pass
+  // `run.cycle.replace` humanize. Soft-null restores the intentional
+  // "unknown" cycle fallthrough. Underscore→space humanize stays a
+  // post-normalize step on the safe token only. Leave failureReason
+  // (#1232 / MISE-005ABV), schedule failure-reason (#927 / MISE-005SO),
+  // describeError (#928 / MISE-005SP), transport `p_failure_reason`,
+  // write-side cntrl sanitizer (#555 / MISE-005EQ), Activity
+  // title/summary i18n (#271), and raw metadata.cycle / sequenceId /
+  // success-emission gate alone.
+  const activityRecalculationDisplayCycle =
+    normalizeActivityRecalculationCycle(run.cycle) ?? "unknown";
+
   return buildEvent({
     restaurantId: run.restaurantId,
     occurredAt: run.completedAt,
@@ -396,7 +412,7 @@ export function fromRecalculationRunActivity(run: {
     title: succeeded ? "Opening recalculation completed" : "Scheduled recalculation failed",
     summary: succeeded
       ? "Mise refreshed forecasts, recommendations, and insights for the operating day."
-      : `Attempt ${run.attempt} of the ${run.cycle.replace(/_/g, " ")} recalculation did not complete. ${
+      : `Attempt ${run.attempt} of the ${activityRecalculationDisplayCycle.replace(/_/g, " ")} recalculation did not complete. ${
           run.failureReason ?? "No failure reason was recorded."
         }`,
     triggerType: "recalculation",
