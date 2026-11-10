@@ -22,12 +22,13 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import { isOperatorPurchaseUnitReady } from "../../services/domain/inventoryOperatorQuantity";
 import {
   addInventoryItemToOrder,
   fetchInventoryItemOutlook,
   fetchQueuedInventoryEvents,
   flushQueuedInventoryEvents,
-  queueInventoryOperation,
+  queueInventoryPurchaseUnitOperation,
   updateInventoryItem
 } from "../../services/miseService";
 import {
@@ -228,12 +229,12 @@ export default function InventoryDetailScreen() {
     setMessage(null);
     setMessageIsError(false);
     try {
-      await queueInventoryOperation({
+      await queueInventoryPurchaseUnitOperation({
         restaurantId,
         inventoryItemId: item.id,
         eventType: operation,
-        quantity,
-        canonicalUnit: item.canonical_unit,
+        purchaseQuantity: quantity,
+        item,
         effectiveAt: new Date().toISOString(),
         note: noteText.trim() || undefined
       });
@@ -499,7 +500,11 @@ export default function InventoryDetailScreen() {
             ) : (
               <>
                 <Text style={styles.canonicalMeta}>
-                  {t("inventory.ops.canonicalUnit", {
+                  {t("inventory.ops.purchaseUnitHint", {
+                    purchaseUnit: item.unit,
+                    factor: formatNumber(item.canonical_quantity_per_unit ?? 0, {
+                      maximumFractionDigits: 4
+                    }),
                     unit: t(`inventory.ops.unit.${canonicalUnit}` as "inventory.ops.unit.g")
                   })}
                 </Text>
@@ -524,7 +529,7 @@ export default function InventoryDetailScreen() {
                     ) : (
                       <Field
                         label={t("inventory.ops.quantity", {
-                          unit: t(`inventory.ops.unit.${canonicalUnit}` as "inventory.ops.unit.g")
+                          unit: item.unit
                         })}
                         value={quantityText}
                         onChangeText={(value) => {
@@ -699,10 +704,7 @@ interface InventorySettingErrors {
 }
 
 function isCanonicalUnitReady(item: InventoryItem) {
-  return (
-    item.canonical_unit_verification_status === "verified" &&
-    (item.canonical_unit === "g" || item.canonical_unit === "ml" || item.canonical_unit === "each")
-  );
+  return isOperatorPurchaseUnitReady(item);
 }
 
 function queueStatusKey(entry: InventoryOutboxEntry) {

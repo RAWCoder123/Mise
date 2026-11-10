@@ -6,6 +6,10 @@ import type {
   InventoryEventAcceptance,
   InventoryEventInput
 } from "../domain/inventoryLedger";
+import {
+  resolveOperatorPurchaseUnitQuantity,
+  type OperatorPurchaseUnitItem
+} from "../domain/inventoryOperatorQuantity";
 import { createId } from "../domain/miseDomain";
 import {
   requireInventoryOperation,
@@ -46,6 +50,56 @@ export function queueInventoryOperation(input: InventoryOperationClientInput) {
       clientEventId,
       idempotencyKey: `inventory:${clientEventId}`
     }
+  });
+}
+
+/**
+ * Queue a count/receipt/waste/stockout where the operator typed purchase-unit
+ * quantities matching `item.unit`. Converts to canonical ledger quantity and
+ * stamps purchase-unit evidence on the event metadata.
+ */
+export function queueInventoryPurchaseUnitOperation(input: {
+  restaurantId: string;
+  inventoryItemId: string;
+  eventType: "count" | "receipt" | "waste" | "stockout";
+  purchaseQuantity: number;
+  item: OperatorPurchaseUnitItem;
+  effectiveAt: string;
+  note?: string;
+  sourceReference?: string;
+  reasonCode?: string;
+}) {
+  if (input.eventType === "stockout") {
+    return queueInventoryOperation({
+      restaurantId: input.restaurantId,
+      inventoryItemId: input.inventoryItemId,
+      eventType: "stockout",
+      quantity: 0,
+      canonicalUnit: input.item.canonical_unit,
+      effectiveAt: input.effectiveAt,
+      note: input.note,
+      sourceReference: input.sourceReference,
+      reasonCode: input.reasonCode
+    });
+  }
+
+  const conversion = resolveOperatorPurchaseUnitQuantity({
+    purchaseQuantity: input.purchaseQuantity,
+    item: input.item
+  });
+  return queueInventoryOperation({
+    restaurantId: input.restaurantId,
+    inventoryItemId: input.inventoryItemId,
+    eventType: input.eventType,
+    quantity: conversion.canonicalQuantity,
+    canonicalUnit: conversion.canonicalUnit,
+    effectiveAt: input.effectiveAt,
+    note: input.note,
+    sourceReference: input.sourceReference,
+    reasonCode: input.reasonCode,
+    purchaseUnitQuantity: conversion.purchaseQuantity,
+    purchaseUnit: conversion.purchaseUnit,
+    canonicalQuantityPerUnit: conversion.canonicalQuantityPerUnit
   });
 }
 
