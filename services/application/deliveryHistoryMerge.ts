@@ -1,5 +1,10 @@
 import type { InventoryEvent } from "../domain/inventoryLedger";
 import type { InventoryOutboxEntry } from "../domain/inventoryOutbox";
+import {
+  classifyDeliveryHistorySource,
+  supplierNameFromDeliveryMetadata,
+  type DeliveryHistorySourceKind
+} from "../domain/deliveryHistorySource";
 
 export interface DeliveryHistoryEntry {
   id: string;
@@ -11,6 +16,10 @@ export interface DeliveryHistoryEntry {
   effectiveAt: string;
   recordedAt: string | null;
   note: string | null;
+  /** Ledger write path that created the receipt. */
+  sourceKind: DeliveryHistorySourceKind;
+  /** Soft-read supplier display name when the write path stamped one. */
+  supplierName: string | null;
   /** True when the receipt is still pending outbox sync. */
   syncing: boolean;
 }
@@ -51,6 +60,8 @@ export function mergeDeliveryHistoryEntries(input: {
       effectiveAt: event.effectiveAt,
       recordedAt: event.recordedAt,
       note: noteFromMetadata(event.metadata),
+      sourceKind: classifyDeliveryHistorySource(event.source),
+      supplierName: supplierNameFromDeliveryMetadata(event.metadata),
       syncing: false
     }));
 
@@ -73,6 +84,8 @@ export function mergeDeliveryHistoryEntries(input: {
       effectiveAt: entry.event.effectiveAt,
       recordedAt: null,
       note: noteFromMetadata(entry.event.metadata),
+      sourceKind: classifyDeliveryHistorySource(entry.event.source),
+      supplierName: supplierNameFromDeliveryMetadata(entry.event.metadata),
       syncing: true
     }));
 
