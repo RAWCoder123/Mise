@@ -14,6 +14,11 @@ import type {
   OperationalFinding
 } from "../../services/domain/operationalFindings";
 import type { OperationalFindingDecisionType } from "../../services/domain/operationalFindingDecisions";
+import {
+  DAILY_BRIEF_EVIDENCE_PREVIEW_LIMIT,
+  dailyBriefEvidenceHasStructuredDetail,
+  presentDailyBriefFindingEvidence
+} from "../../services/presentation/dailyBriefEvidencePresentation";
 import { latestMatchingQueueEntry } from "./findingQueueMatch";
 
 export { latestMatchingQueueEntry, queuedFindingMatchesCurrent } from "./findingQueueMatch";
@@ -181,6 +186,7 @@ function FindingCard({
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(finding.recommendedAction);
   const [editError, setEditError] = useState<string | undefined>();
+  const [evidenceExpanded, setEvidenceExpanded] = useState(false);
 
   const severityTone: BadgeTone =
     finding.severity === "urgent" ? "danger" : finding.severity === "warning" ? "warning" : "neutral";
@@ -193,6 +199,15 @@ function FindingCard({
     style: "percent",
     maximumFractionDigits: 0
   });
+  const structuredEvidence = presentDailyBriefFindingEvidence(finding);
+  const hasStructuredDetail = dailyBriefEvidenceHasStructuredDetail(structuredEvidence);
+  const visibleEvidence = evidenceExpanded
+    ? structuredEvidence.evidenceItems
+    : structuredEvidence.evidenceItems.slice(0, DAILY_BRIEF_EVIDENCE_PREVIEW_LIMIT);
+  const hiddenEvidenceCount = Math.max(
+    0,
+    structuredEvidence.evidenceItems.length - DAILY_BRIEF_EVIDENCE_PREVIEW_LIMIT
+  );
 
   async function submit(decisionType: OperationalFindingDecisionType, edited?: string) {
     if (disabled || busy) return;
@@ -250,6 +265,52 @@ function FindingCard({
         <Text style={styles.missing}>
           {t("dailyBrief.missingData", { items: finding.freshness.missingData.join(", ") })}
         </Text>
+      ) : null}
+      {hasStructuredDetail ? (
+        <View style={styles.evidenceBlock}>
+          {structuredEvidence.confidenceRationale ? (
+            <>
+              <Text style={styles.kicker}>{t("dailyBrief.evidence.rationale")}</Text>
+              <Text style={styles.cardBody}>{structuredEvidence.confidenceRationale}</Text>
+            </>
+          ) : null}
+          {structuredEvidence.evidenceItems.length > 0 ? (
+            <View style={styles.evidenceList}>
+              <Text style={styles.meta}>{t("dailyBrief.evidence.checked")}</Text>
+              {visibleEvidence.map((item) => (
+                <Text key={item} style={styles.cardBody}>
+                  · {item}
+                </Text>
+              ))}
+              {hiddenEvidenceCount > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: evidenceExpanded }}
+                  accessibilityLabel={
+                    evidenceExpanded
+                      ? t("dailyBrief.evidence.hide")
+                      : t("dailyBrief.evidence.show", {
+                          count: formatNumber(hiddenEvidenceCount)
+                        })
+                  }
+                  onPress={() => setEvidenceExpanded((current) => !current)}
+                  style={({ pressed }) => [
+                    styles.evidenceToggle,
+                    pressed && styles.evidenceTogglePressed
+                  ]}
+                >
+                  <Text style={styles.evidenceToggleText}>
+                    {evidenceExpanded
+                      ? t("dailyBrief.evidence.hide")
+                      : t("dailyBrief.evidence.show", {
+                          count: formatNumber(hiddenEvidenceCount)
+                        })}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
       ) : null}
 
       <Text style={styles.kicker}>{t("dailyBrief.recommended")}</Text>
@@ -448,6 +509,28 @@ const styles = StyleSheet.create({
   cardBody: { color: colors.muted, fontFamily: typography.families.body, fontSize: 13, lineHeight: 18 },
   meta: { color: colors.faint, fontFamily: typography.families.semibold, fontSize: 12, lineHeight: 16 },
   missing: { color: colors.warning, fontFamily: typography.families.semibold, fontSize: 12, lineHeight: 16 },
+  evidenceBlock: {
+    marginTop: 2,
+    gap: 4
+  },
+  evidenceList: {
+    gap: 2
+  },
+  evidenceToggle: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingVertical: 4
+  },
+  evidenceTogglePressed: {
+    opacity: 0.7
+  },
+  evidenceToggleText: {
+    color: colors.text,
+    fontFamily: typography.families.semibold,
+    fontSize: 12,
+    lineHeight: 16
+  },
   kicker: {
     marginTop: 4,
     color: colors.faint,
