@@ -28,6 +28,7 @@ import type {
   OperatingBriefApprovalCard
 } from "../../services/domain/operatingBrief";
 import { hourInTimeZone } from "../../services/domain/operatingPlan";
+import { normalizeHomeApprovalsApproveButtonTitle } from "../../services/domain/presentationHomeApprovalsApproveButtonTitleIdentity";
 import {
   classifyOperationalTodayTaskTiming,
   type OperationalTodayTask,
@@ -381,6 +382,18 @@ function ApprovalsSection({
       ) : (
         cards.map((card) => {
           const canOneTap = Boolean(card.recommendationId);
+          // MISE-005ACA: pin Home ApprovalsSection approve/review Button a11y
+          // card.title to ASCII C. Soft-null empty / Unicode-padded /
+          // control-bearing titles before home.approvals.approveAccessibility
+          // / reviewAccessibility interpolations so padding cannot invent a
+          // clean approval identity and blank-looking titles fall through to
+          // localized home.approvals.approveAccessibility.title.none. Leave
+          // cardTitle Text display (#1049), recommendedAction (#1134),
+          // whyItMatters (#1135), and StatusNotice approval titles (#1011)
+          // alone.
+          const approveButtonTitle =
+            normalizeHomeApprovalsApproveButtonTitle(card.title) ||
+            t("home.approvals.approveAccessibility.title.none");
           return (
             <View key={card.id} style={styles.briefCard}>
               <Text style={styles.cardTitle}>{card.title}</Text>
@@ -395,6 +408,16 @@ function ApprovalsSection({
                         ? t("home.approvals.approve")
                         : t("home.approvals.review")
                   }
+                  accessibilityLabel={
+                    canOneTap
+                      ? t("home.approvals.approveAccessibility", {
+                          title: approveButtonTitle
+                        })
+                      : t("home.approvals.reviewAccessibility", {
+                          title: approveButtonTitle
+                        })
+                  }
+                  accessibilityState={{ disabled: Boolean(approvingId) }}
                   onPress={() => void onApprove(card)}
                   disabled={Boolean(approvingId)}
                   style={styles.approvalButton}
