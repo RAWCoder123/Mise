@@ -8,6 +8,7 @@ import { colors, conceptTypography, density, iconStroke, radii } from "../../con
 import { useLocale } from "../../contexts/LocaleContext";
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { OperatingPlanBucket, OperatingPlanItem } from "../../services/domain/operatingPlan";
+import { normalizeOperatingPlanTimelineCompletionResult } from "../../services/domain/presentationOperatingPlanTimelineCompletionResultIdentity";
 import {
   canRestaurantRoleActOnTodayTask,
   classifyOperationalTodayTaskTiming,
@@ -16,6 +17,9 @@ import {
 } from "../../services/domain/todayTasks";
 import { presentOperatingPlanItem } from "../../services/presentation/operationsPresentation";
 import type { RestaurantRole } from "../../types/mise";
+
+// MISE-005ABL: soft-null timeline display presentation.completionResult before
+// the today.plan.result interpolate / truthiness hide branch.
 
 type Translator = (key: MessageKey, values?: MessageValues) => string;
 
@@ -116,6 +120,10 @@ function OperatingPlanItemRow({
 }) {
   const { formatDate, formatDueTime } = useLocale();
   const presentation = presentOperatingPlanItem(locale, item);
+  // MISE-005ABL: pin presentation.completionResult display to ASCII C.
+  const timelineCompletionResult = normalizeOperatingPlanTimelineCompletionResult(
+    presentation.completionResult
+  );
   const task = item.sourceTask;
   const timing = task
     ? classifyOperationalTodayTaskTiming(task, { restaurantTimeZone })
@@ -190,9 +198,9 @@ function OperatingPlanItemRow({
                 {presentation.windowLabel}
               </Text>
             ) : null}
-            {isDone && presentation.completionResult ? (
+            {isDone && timelineCompletionResult ? (
               <Text numberOfLines={1} style={styles.result}>
-                {t("today.plan.result", { result: presentation.completionResult })}
+                {t("today.plan.result", { result: timelineCompletionResult })}
               </Text>
             ) : null}
           </View>
