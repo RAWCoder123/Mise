@@ -3829,6 +3829,11 @@ export function createLocalDemoRepository(): MiseRepository {
           (entry) => entry.restaurant_id === restaurantId && entry.id === input.supplierOrderId
         );
         if (!order) throw new Error("Supplier order not found");
+        if (!order.supplier_id) {
+          throw new Error(
+            "Supplier delivery receipts require the order's durable supplier identity."
+          );
+        }
         if (order.status !== "sent" && order.status !== "completed") {
           throw new Error("Only sent orders can be received");
         }
@@ -4071,6 +4076,7 @@ export function createLocalDemoRepository(): MiseRepository {
           entity_id: deliveryId,
           metadata: {
             supplier_order_id: order.id,
+            supplier_id: order.supplier_id,
             status,
             line_count: input.lines.length,
             outcome_id: outcome.id
