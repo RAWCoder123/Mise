@@ -87,6 +87,7 @@ import {
   type InventoryEvent,
   type InventoryEventInput
 } from "../domain/inventoryLedger";
+import { applyOperatorReceiptSupplierAttribution } from "../domain/receiptSupplierAttribution";
 import { isTemporallyValidCount } from "../domain/inventoryCountAuthority";
 import {
   PurchaseAuthorityBlockedError,
@@ -936,9 +937,26 @@ export function createLocalDemoRepository(): MiseRepository {
         throw new Error("Inventory event would move on-hand outside supported limits");
       }
 
+      // Stamp durable supplier_id onto ad-hoc operator receipts before the
+      // ledger accepts the row so retries stay idempotent and demo mirrors the
+      // hosted BEFORE INSERT validation contract.
+      const attributed = applyOperatorReceiptSupplierAttribution({
+        eventType: input.eventType,
+        source: input.source,
+        metadata: input.metadata ?? {},
+        inventoryItemSupplierId: item.supplier_id
+      });
+      if (!attributed.ok) {
+        return { status: "rejected" as const, reason: attributed.reason };
+      }
+      const candidate: InventoryEventInput = {
+        ...input,
+        metadata: attributed.metadata
+      };
+
       const acceptance = acceptInventoryEvent({
         existingEvents: state.inventoryEvents ?? [],
-        candidate: input,
+        candidate,
         authority: {
           id: deterministicDemoEventId(input.restaurantId, input.clientEventId),
           actorUserId: DEMO_USER_ID,
@@ -952,7 +970,7 @@ export function createLocalDemoRepository(): MiseRepository {
       // move the on-hand projection again.
       const projectionApplied = inventoryEventMovesProjection(
         state.inventoryEvents ?? [],
-        input,
+        candidate,
         acceptance.event.recordedAt
       );
       const recordedEvent = { ...acceptance.event, projectionApplied };
@@ -961,11 +979,11 @@ export function createLocalDemoRepository(): MiseRepository {
         item.current_quantity = projectedQuantity;
         item.last_updated = recordedEvent.recordedAt;
       }
-      if (projectionApplied && input.eventType === "waste") {
+      if (projectionApplied && candidate.eventType === "waste") {
         const timeZone = state.restaurants.find(
-          (restaurant) => restaurant.id === input.restaurantId
+          (restaurant) => restaurant.id === candidate.restaurantId
         )?.timezone ?? "UTC";
-        const effectiveDate = toDateKeyInTimeZone(new Date(input.effectiveAt), timeZone);
+        const effectiveDate = toDateKeyInTimeZone(new Date(candidate.effectiveAt), timeZone);
         const recentCutoff = addDaysToDateKey(effectiveDate, -6);
         const supersededEventIds = new Set(
           state.inventoryEvents
@@ -976,9 +994,9 @@ export function createLocalDemoRepository(): MiseRepository {
           state.inventoryEvents
             .filter(
               (event) =>
-                event.restaurantId === input.restaurantId &&
+                event.restaurantId === candidate.restaurantId &&
                 event.eventType === "waste" &&
-                event.inventoryItemId === input.inventoryItemId &&
+                event.inventoryItemId === candidate.inventoryItemId &&
                 !supersededEventIds.has(event.id)
             )
             .map((event) =>
@@ -987,23 +1005,23 @@ export function createLocalDemoRepository(): MiseRepository {
             .filter((date) => date >= recentCutoff && date <= effectiveDate)
         ).size >= 2;
         const activity = fromInventoryWasteRecorded(normalizedItem, {
-          occurredAt: input.effectiveAt,
-          quantity: input.quantity,
-          canonicalUnit: input.canonicalUnit,
+          occurredAt: candidate.effectiveAt,
+          quantity: candidate.quantity,
+          canonicalUnit: candidate.canonicalUnit,
           repeatedRecently,
           eventId: acceptance.event.id,
-          sequenceId: `inventory-item:${input.inventoryItemId}`
+          sequenceId: `inventory-item:${candidate.inventoryItemId}`
         });
         state.activityEvents = [...(state.activityEvents ?? []), activity];
       }
       appendDemoAuditLog(state, {
-        restaurant_id: input.restaurantId,
+        restaurant_id: candidate.restaurantId,
         action: "inventory_event.recorded",
         entity_table: "inventory_events",
         entity_id: acceptance.event.id,
         metadata: {
-          event_type: input.eventType,
-          client_event_id: input.clientEventId,
+          event_type: candidate.eventType,
+          client_event_id: candidate.clientEventId,
           sequence: acceptance.event.sequence,
           projection_applied: projectionApplied,
           simulated: true

@@ -211,6 +211,18 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match ahead of the generic "quantity" / "evidence" branches — hosted
+  // operator-receipt supplier attribution names the durable supplier contract.
+  // `message` is already lowercased by inventoryEventRejectionFromRpcError.
+  if (
+    message.includes("durable supplier identity") ||
+    message.includes("must match the inventory item supplier") ||
+    message.includes("durable supplier uuid")
+  ) {
+    if (message.includes("must match")) return "supplier_mismatch";
+    if (message.includes("uuid")) return "invalid_supplier";
+    return "missing_supplier";
+  }
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
