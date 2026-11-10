@@ -4,7 +4,7 @@ import { ArrowLeft, Package, Truck } from "lucide-react-native";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ActionIcon } from "../../components/ui/ActionIcon";
-import { Badge } from "../../components/ui/Badge";
+import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { OperationalRow } from "../../components/ui/OperationalRow";
@@ -46,6 +46,12 @@ function isCanonicalUnitReady(item: InventoryItem) {
     item.canonical_unit_verification_status === "verified" &&
     (item.canonical_unit === "g" || item.canonical_unit === "ml" || item.canonical_unit === "each")
   );
+}
+
+function deliveryHistorySourceTone(sourceKind: DeliveryHistoryEntry["sourceKind"]): BadgeTone {
+  if (sourceKind === "supplier_delivery") return "success";
+  if (sourceKind === "operator_receipt") return "neutral";
+  return "caution";
 }
 
 function describeFlushResult(
@@ -353,15 +359,31 @@ export default function LogDeliveryScreen() {
                       <Text style={styles.historyWhen}>
                         {formatWhen(entry.effectiveAt)}
                       </Text>
+                      {entry.supplierName ? (
+                        <Text numberOfLines={1} style={styles.historyMeta}>
+                          {t("logDelivery.history.supplier", { name: entry.supplierName })}
+                        </Text>
+                      ) : null}
                       {entry.note ? (
                         <Text numberOfLines={2} style={styles.historyNote}>
                           {entry.note}
                         </Text>
                       ) : null}
                     </View>
-                    {entry.syncing ? (
-                      <Badge label={t("logDelivery.history.syncing")} tone="warning" />
-                    ) : null}
+                    <View style={styles.historyBadges}>
+                      <Badge
+                        label={t(
+                          `logDelivery.history.source.${entry.sourceKind}` as
+                            | "logDelivery.history.source.operator_receipt"
+                            | "logDelivery.history.source.supplier_delivery"
+                            | "logDelivery.history.source.other"
+                        )}
+                        tone={deliveryHistorySourceTone(entry.sourceKind)}
+                      />
+                      {entry.syncing ? (
+                        <Badge label={t("logDelivery.history.syncing")} tone="warning" />
+                      ) : null}
+                    </View>
                   </View>
                 ))}
               </View>
@@ -569,6 +591,11 @@ const styles = StyleSheet.create({
   historyMain: {
     flex: 1,
     gap: 3
+  },
+  historyBadges: {
+    alignItems: "flex-end",
+    gap: 6,
+    maxWidth: "42%"
   },
   historyTitle: {
     ...typography.body,

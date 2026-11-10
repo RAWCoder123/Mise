@@ -106,9 +106,57 @@ test("mergeDeliveryHistoryEntries includes pending outbox receipts as syncing", 
   assert.equal(history[0]!.syncing, true);
   assert.equal(history[0]!.itemName, "Chicken thighs");
   assert.equal(history[0]!.note, "Still syncing");
+  assert.equal(history[0]!.sourceKind, "other");
+  assert.equal(history[0]!.supplierName, null);
   assert.equal(history[1]!.syncing, false);
   assert.equal(history[1]!.clientEventId, "client-receipt-1");
   assert.equal(history[1]!.note, "Morning drop");
+  assert.equal(history[1]!.sourceKind, "other");
+  assert.equal(history[1]!.supplierName, null);
+});
+
+test("mergeDeliveryHistoryEntries preserves operator and supplier receipt sources", async () => {
+  const { record, list } = createInMemoryInventoryEventRecorder({
+    actorUserId: "manager-1",
+    idFor: (candidate) => `server-${candidate.clientEventId}`,
+    now: () => "2026-08-01T09:05:00.000Z"
+  });
+
+  await record({
+    ...receiptInput,
+    source: "operator_receipt",
+    clientEventId: "client-operator",
+    idempotencyKey: "inventory:client-operator",
+    effectiveAt: "2026-08-01T08:00:00.000Z",
+    metadata: { note: "Walk-in cooler drop" }
+  });
+  await record({
+    ...receiptInput,
+    source: "supplier_delivery",
+    clientEventId: "client-order",
+    idempotencyKey: "inventory:client-order",
+    effectiveAt: "2026-08-01T11:00:00.000Z",
+    metadata: {
+      supplierName: "Fresh Poultry Supply",
+      supplierOrderId: "order-1",
+      note: "As ordered"
+    }
+  });
+
+  const events = list({ restaurantId: "restaurant-a", eventTypes: ["receipt"] });
+  const history = mergeDeliveryHistoryEntries({
+    events,
+    itemNames: new Map([["item-chicken", "Chicken thighs"]]),
+    queued: []
+  });
+
+  assert.equal(history.length, 2);
+  assert.equal(history[0]!.sourceKind, "supplier_delivery");
+  assert.equal(history[0]!.supplierName, "Fresh Poultry Supply");
+  assert.equal(history[0]!.note, "As ordered");
+  assert.equal(history[1]!.sourceKind, "operator_receipt");
+  assert.equal(history[1]!.supplierName, null);
+  assert.equal(history[1]!.note, "Walk-in cooler drop");
 });
 
 test("mergeDeliveryHistoryEntries dedupes pending entries already accepted", async () => {
