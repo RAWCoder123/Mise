@@ -33,12 +33,15 @@ import {
   queueOperationalFindingDecision,
   type OperatorTask
 } from "../../services/miseService";
+import { normalizeTodayFloorNotesBodyDisplay } from "../../services/domain/presentationTodayFloorNotesBodyDisplayIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
 } from "../../services/presentation/hubLoadState";
 import { canManageRestaurantData } from "../../services/tenantAccess";
 import { captureMiseError } from "../../services/telemetry";
+
+// MISE-005ABZ: soft-null floor-notes display note.body before render.
 
 type TaskFilter = OperatingPlanBucket;
 type Translator = (key: MessageKey, values?: MessageValues) => string;
@@ -392,6 +395,15 @@ export default function TodayScreen() {
                   </Text>
                   {notes.map((note) => {
                     const focusRoute = operatorTaskFocusRoute(note.focusArea);
+                    // MISE-005ABZ: pin Today floor-notes display note.body to
+                    // ASCII C. Soft-null empty / Unicode-padded / unsafe bodies
+                    // so blank-looking detail cannot invent through the prior
+                    // truthy always-pass path, and em-space padding cannot
+                    // invent clean equality via Unicode trim. Soft-null omits
+                    // the optional detail Text. Leave display title (#1235),
+                    // row a11y title (#1084), and write-path body normalize
+                    // (#839) alone as separate call sites.
+                    const displayBody = normalizeTodayFloorNotesBodyDisplay(note.body);
                     return (
                       <View key={note.id} style={styles.floorNoteCard}>
                         <Pressable
@@ -403,9 +415,9 @@ export default function TodayScreen() {
                         >
                           <View style={styles.floorNoteCopy}>
                             <Text style={styles.floorNoteTitle}>{note.title}</Text>
-                            {note.body ? (
+                            {displayBody ? (
                               <Text numberOfLines={2} style={styles.floorNoteDetail}>
-                                {note.body}
+                                {displayBody}
                               </Text>
                             ) : null}
                           </View>
