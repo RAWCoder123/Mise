@@ -29,6 +29,7 @@ import {
   type SetupStepId,
   type SetupSupplierDraft
 } from "../../services/domain/setupDrafts";
+import { normalizeSetupReadySubtitleRestaurantName } from "../../services/domain/presentationSetupReadySubtitleRestaurantNameIdentity";
 import {
   createDemoSetupStarterDrafts,
   DEMO_DATASET,
@@ -38,6 +39,8 @@ import {
 import { saveRestaurantSetup, updateRestaurantProfile } from "../../services/miseService";
 import { canUpdateRestaurantProfile } from "../../services/tenantAccess";
 import { trackMiseEvent } from "../../services/telemetry";
+
+// MISE-005ABK: pin setup.ready.subtitle readyName to ASCII C.
 import { operatingLimits } from "../../services/miseValidation";
 import type { PosProvider } from "../../types/mise";
 
@@ -320,8 +323,19 @@ export default function SetupScreen() {
   if (readyName) {
     const localizedDays = formatList(selectedDays.map((day) => dayLabel(t, day)));
     const importedRows = posSalesImport.rows.length;
+    // Soft-null empty / Unicode-padded / control-bearing readyName so
+    // localized setup.ready.subtitle.none owns blank-looking ready chrome.
+    // Leave durable restaurant-name write canonicalize (#844) alone.
+    const setupReadyRestaurantName = normalizeSetupReadySubtitleRestaurantName(readyName);
     return (
-      <Screen title={t("setup.ready.title")} subtitle={t("setup.ready.subtitle", { restaurant: readyName })}>
+      <Screen
+        title={t("setup.ready.title")}
+        subtitle={
+          setupReadyRestaurantName
+            ? t("setup.ready.subtitle", { restaurant: setupReadyRestaurantName })
+            : t("setup.ready.subtitle.none")
+        }
+      >
         <Card tone="warm">
           <View style={styles.statusRow}>
             <CheckCircle size={icon.emphasis} color={colors.success} strokeWidth={iconStroke} />
