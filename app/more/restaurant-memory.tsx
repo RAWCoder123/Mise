@@ -12,6 +12,7 @@ import { colors, conceptTypography, icon, iconStroke, radii } from "../../consta
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import type { RestaurantMemory } from "../../services/domain/restaurantMemory";
+import { resolveRestaurantMemoryTypeMessageKey } from "../../services/domain/presentationRestaurantMemoryTypeIdentity";
 import {
   convertRestaurantMemoryToSafeRule,
   fetchRestaurantMemories,
@@ -183,7 +184,10 @@ export default function RestaurantMemoryScreen() {
 
         {visible.map((memory) => (
           <View key={memory.id} style={styles.card}>
-            <Text style={styles.type}>{memory.memoryType.replace(/_/g, " ")}</Text>
+            {/* MISE-005ABT: localize Restaurant Memory memoryType under ASCII C. */}
+            <Text style={styles.type}>
+              {t(resolveRestaurantMemoryTypeMessageKey(memory.memoryType))}
+            </Text>
             <Text style={styles.statement}>{memory.statement}</Text>
             <Text style={styles.meta}>
               {t("memory.confidence", {
