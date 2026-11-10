@@ -12,12 +12,15 @@ import { StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, spacing, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { normalizePosMappingsExternalVariationId } from "../../services/domain/presentationPosMappingsExternalVariationIdIdentity";
 import {
   fetchPosMappingReviewQueue,
   reviewPosCatalogMapping,
   type PosMappingReviewQueue
 } from "../../services/miseService";
 import { canManageRestaurantData } from "../../services/tenantAccess";
+
+// MISE-005ABJ: pin POS mappings card-meta mapping.externalVariationId to ASCII C.
 
 export default function PosMappingsScreen() {
   const navigation = useNavigation();
@@ -185,6 +188,12 @@ export default function PosMappingsScreen() {
               const selectedMenuItem = selectedMenuItemId ? menuById.get(selectedMenuItemId) : null;
               const expanded = expandedMappingId === mapping.id;
               const busy = busyMappingId === mapping.id;
+              // Soft-null empty / Unicode-padded / control-bearing variation
+              // ids so localized pos.mappings.variation.none owns blank-looking
+              // card-meta variation chrome.
+              const mappingExternalVariationId = normalizePosMappingsExternalVariationId(
+                mapping.externalVariationId
+              );
               return (
                 <Card key={mapping.id}>
                   <View style={styles.mappingHeader}>
@@ -195,7 +204,9 @@ export default function PosMappingsScreen() {
                       <Text style={styles.location}>{mapping.locationName}</Text>
                       <Text style={styles.mappingName}>{mapping.externalName}</Text>
                       <Text style={styles.mappingMeta} numberOfLines={1}>
-                        {t("pos.mappings.variation", { value: mapping.externalVariationId })}
+                        {mappingExternalVariationId
+                          ? t("pos.mappings.variation", { value: mappingExternalVariationId })
+                          : t("pos.mappings.variation.none")}
                       </Text>
                     </View>
                   </View>
