@@ -109,6 +109,15 @@ test("daily brief UI uses screen-safe brief and finding-feedback facades", () =>
   assert.match(board, /approveAccessibility/);
   assert.match(board, /editAccessibility/);
   assert.match(board, /dismissAccessibility/);
+  assert.match(board, /presentDailyBriefFindingEvidence/);
+  assert.match(board, /dailyBriefEvidenceHasStructuredDetail/);
+  assert.match(board, /DAILY_BRIEF_EVIDENCE_PREVIEW_LIMIT/);
+  assert.match(board, /dailyBrief\.evidence\.rationale/);
+  assert.match(board, /dailyBrief\.evidence\.checked/);
+  assert.match(board, /dailyBrief\.evidence\.show/);
+  assert.match(board, /dailyBrief\.evidence\.hide/);
+  assert.match(board, /structuredEvidence\.confidenceRationale/);
+  assert.match(board, /visibleEvidence\.map/);
   assert.doesNotMatch(
     board,
     /<View[\s\S]*?style=\{\[styles\.card[\s\S]*?accessible\b/,
@@ -116,7 +125,12 @@ test("daily brief UI uses screen-safe brief and finding-feedback facades", () =>
   );
   assert.match(catalog, /"dailyBrief\.title":/);
   assert.match(catalog, /"dailyBrief\.feedbackDisclaimer":/);
+  assert.match(catalog, /"dailyBrief\.evidence\.rationale":/);
+  assert.match(catalog, /"dailyBrief\.evidence\.checked":/);
+  assert.match(catalog, /"dailyBrief\.evidence\.show":/);
+  assert.match(catalog, /"dailyBrief\.evidence\.hide":/);
   assert.equal((catalog.match(/"dailyBrief\.title":/g) || []).length, 3);
+  assert.equal((catalog.match(/"dailyBrief\.evidence\.checked":/g) || []).length, 3);
 });
 
 test("queue badges require an exact finding snapshot match", () => {
