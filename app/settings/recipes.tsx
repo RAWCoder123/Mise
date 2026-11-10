@@ -24,6 +24,7 @@ import {
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
+import { normalizeRecipesIngredientAccessibilityItemName } from "../../services/domain/presentationRecipesIngredientAccessibilityItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -683,6 +684,19 @@ function RecipeRow({
               const isBusy = savingMappingId !== null;
               const parsed = parsedQuantity(draftValue);
               const isDirty = parsed !== null && parsed !== ingredient.quantityUsedPerSale;
+              // MISE-005ABQ: pin Settings Recipes quantity/save/readOnly a11y
+              // ingredient.itemName to ASCII C. Soft-null empty /
+              // Unicode-padded / control-bearing names before a11y
+              // interpolations so padding cannot invent a clean ingredient
+              // identity and blank-looking names fall through to localized
+              // recipes.row.accessibility.ingredient.none. Leave ingredient
+              // name Text display (#1067), ingredient.unit (#1220), Setup
+              // recipe ingredient a11y (#1086), POS missing-recipe badges
+              // (#1082), dish menu_item_name (#1080), and builder SuggestionChip
+              // (#1083) alone.
+              const accessibilityIngredientName =
+                normalizeRecipesIngredientAccessibilityItemName(ingredient.itemName) ||
+                t("recipes.row.accessibility.ingredient.none");
 
               return (
                 <View key={ingredient.mappingId} style={styles.ingredientEditor}>
@@ -714,14 +728,16 @@ function RecipeRow({
                           editable={!isBusy}
                           keyboardType="decimal-pad"
                           selectTextOnFocus
-                          accessibilityLabel={t("recipes.row.quantityAccessibility", { ingredient: ingredient.itemName })}
+                          accessibilityLabel={t("recipes.row.quantityAccessibility", {
+                            ingredient: accessibilityIngredientName
+                          })}
                           accessibilityState={{ disabled: isBusy }}
                           style={styles.quantityInput}
                         />
                       ) : (
                         <Text
                           accessibilityLabel={t("recipes.row.readOnlyAccessibility", {
-                            ingredient: ingredient.itemName,
+                            ingredient: accessibilityIngredientName,
                             quantity: draftValue,
                             unit: ingredient.unit
                           })}
@@ -737,7 +753,9 @@ function RecipeRow({
                     {canManage ? (
                       <Button
                         title={t(isSaving ? "recipes.action.saving" : "recipes.action.save")}
-                        accessibilityLabel={t("recipes.action.saveAccessibility", { ingredient: ingredient.itemName })}
+                        accessibilityLabel={t("recipes.action.saveAccessibility", {
+                          ingredient: accessibilityIngredientName
+                        })}
                         variant="secondary"
                         icon={<Save size={icon.inline} color={colors.text} strokeWidth={iconStroke} />}
                         disabled={isBusy || !isDirty}
