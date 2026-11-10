@@ -22,6 +22,7 @@ import {
   queueInventoryOperation,
   type DeliveryHistoryEntry
 } from "../../services/miseService";
+import { normalizeLogDeliveryRowItemName } from "../../services/domain/presentationLogDeliveryRowItemNameIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -412,7 +413,22 @@ export default function LogDeliveryScreen() {
                       setQuantityText("");
                       setNoteText("");
                     }}
-                    accessibilityLabel={t("logDelivery.row.accessibility", { item: item.item_name })}
+                    accessibilityLabel={t("logDelivery.row.accessibility", {
+                      // MISE-005ABO: pin Log Delivery pick-list row a11y
+                      // item.item_name to ASCII C. Soft-null empty /
+                      // Unicode-padded / control-bearing names before
+                      // logDelivery.row.accessibility interpolations so
+                      // padding cannot invent a clean item identity and
+                      // blank-looking names fall through to localized
+                      // logDelivery.row.accessibility.item.none. Leave
+                      // OperationalRow title={item.item_name} (#1059),
+                      // selected.item_name (#1060), history entry.itemName
+                      // (#1062), Scan Item row display (#1061), and Waste
+                      // reviewItem a11y (#1073) alone.
+                      item:
+                        normalizeLogDeliveryRowItemName(item.item_name) ||
+                        t("logDelivery.row.accessibility.item.none")
+                    })}
                   />
                 ))}
               </View>
