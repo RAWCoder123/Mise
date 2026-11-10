@@ -98,6 +98,12 @@ export interface InventoryOperationClientInput {
   sourceReference?: unknown;
   reasonCode?: unknown;
   note?: unknown;
+  /** Purchase/native quantity the operator typed in `item.unit` before conversion. */
+  purchaseUnitQuantity?: unknown;
+  /** Display purchase unit (`item.unit`) for the typed quantity. */
+  purchaseUnit?: unknown;
+  /** Verified canonical grams/ml/each per one purchase unit. */
+  canonicalQuantityPerUnit?: unknown;
 }
 
 export type ValidatedInventoryOperation = Omit<
@@ -109,6 +115,10 @@ export type ValidatedInventoryOperation = Omit<
  * The operator-facing inventory boundary accepts only bounded evidence fields.
  * Actor, sequence, arbitrary metadata, and correction links are intentionally
  * absent; those require server authority or a dedicated reconciliation flow.
+ *
+ * `quantity` is always the canonical ledger quantity. When operators type in
+ * purchase units, callers convert first and stamp the optional purchase-unit
+ * evidence fields so the typed amount remains auditable.
  */
 export function requireInventoryOperation(
   input: InventoryOperationClientInput
@@ -129,6 +139,12 @@ export function requireInventoryOperation(
   const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
   const reasonCode = optionalBoundedText(input.reasonCode, "reason", 80);
   const note = optionalBoundedText(input.note, "note", 500);
+  const metadata = buildOperatorInventoryMetadata({
+    note,
+    purchaseUnitQuantity: input.purchaseUnitQuantity,
+    purchaseUnit: input.purchaseUnit,
+    canonicalQuantityPerUnit: input.canonicalQuantityPerUnit
+  });
   return {
     restaurantId,
     inventoryItemId,
@@ -140,7 +156,48 @@ export function requireInventoryOperation(
     sourceReference,
     reasonCode,
     supersedesEventId: null,
-    metadata: note ? { note } : {}
+    metadata
+  };
+}
+
+function buildOperatorInventoryMetadata(input: {
+  note: string | null;
+  purchaseUnitQuantity: unknown;
+  purchaseUnit: unknown;
+  canonicalQuantityPerUnit: unknown;
+}): Record<string, unknown> {
+  const hasPurchaseEvidence =
+    input.purchaseUnitQuantity !== undefined ||
+    input.purchaseUnit !== undefined ||
+    input.canonicalQuantityPerUnit !== undefined;
+  if (!hasPurchaseEvidence) {
+    return input.note ? { note: input.note } : {};
+  }
+
+  if (
+    input.purchaseUnitQuantity === undefined ||
+    input.purchaseUnit === undefined ||
+    input.canonicalQuantityPerUnit === undefined
+  ) {
+    throw new Error("Purchase-unit inventory evidence must include quantity, unit, and conversion.");
+  }
+
+  const purchaseUnitQuantity = requireInventoryQuantity(input.purchaseUnitQuantity);
+  const purchaseUnit = requireBoundedText(input.purchaseUnit, "purchase unit", 40);
+  const canonicalQuantityPerUnit = Number(input.canonicalQuantityPerUnit);
+  if (
+    !Number.isFinite(canonicalQuantityPerUnit) ||
+    canonicalQuantityPerUnit <= 0 ||
+    canonicalQuantityPerUnit > 1_000_000_000
+  ) {
+    throw new Error("Canonical quantity per unit is not verified");
+  }
+
+  return {
+    ...(input.note ? { note: input.note } : {}),
+    purchase_unit_quantity: purchaseUnitQuantity,
+    purchase_unit: purchaseUnit,
+    canonical_quantity_per_unit: canonicalQuantityPerUnit
   };
 }
 

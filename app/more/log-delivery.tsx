@@ -15,11 +15,12 @@ import { RetryNotice, StatusNotice } from "../../components/ui/StatusNotice";
 import { colors, icon, iconStroke, radii, typography } from "../../constants/theme";
 import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
+import { isOperatorPurchaseUnitReady } from "../../services/domain/inventoryOperatorQuantity";
 import {
   fetchDeliveryHistory,
   fetchInventoryItems,
   flushQueuedInventoryEvents,
-  queueInventoryOperation,
+  queueInventoryPurchaseUnitOperation,
   type DeliveryHistoryEntry
 } from "../../services/miseService";
 import {
@@ -42,10 +43,7 @@ function BackAction() {
 }
 
 function isCanonicalUnitReady(item: InventoryItem) {
-  return (
-    item.canonical_unit_verification_status === "verified" &&
-    (item.canonical_unit === "g" || item.canonical_unit === "ml" || item.canonical_unit === "each")
-  );
+  return isOperatorPurchaseUnitReady(item);
 }
 
 function describeFlushResult(
@@ -217,12 +215,12 @@ export default function LogDeliveryScreen() {
     setMessage(null);
     setMessageIsError(false);
     try {
-      await queueInventoryOperation({
+      await queueInventoryPurchaseUnitOperation({
         restaurantId,
         inventoryItemId: itemId,
         eventType: "receipt",
-        quantity,
-        canonicalUnit: selected.canonical_unit!,
+        purchaseQuantity: quantity,
+        item: selected,
         effectiveAt: new Date().toISOString(),
         note: noteText.trim() || undefined
       });
@@ -428,6 +426,9 @@ export default function LogDeliveryScreen() {
                   ? t("logDelivery.form.helper", {
                       qty: formatNumber(selected.current_quantity, { maximumFractionDigits: 1 }),
                       displayUnit: selected.unit,
+                      factor: formatNumber(selected.canonical_quantity_per_unit ?? 0, {
+                        maximumFractionDigits: 4
+                      }),
                       unit: t(
                         `inventory.ops.unit.${selected.canonical_unit}` as
                           | "inventory.ops.unit.g"
@@ -443,12 +444,7 @@ export default function LogDeliveryScreen() {
               title={
                 isCanonicalUnitReady(selected)
                   ? t("logDelivery.field.quantityWithUnit", {
-                      unit: t(
-                        `inventory.ops.unit.${selected.canonical_unit}` as
-                          | "inventory.ops.unit.g"
-                          | "inventory.ops.unit.ml"
-                          | "inventory.ops.unit.each"
-                      )
+                      unit: selected.unit
                     })
                   : t("logDelivery.field.quantity")
               }
@@ -457,12 +453,7 @@ export default function LogDeliveryScreen() {
               accessibilityLabel={
                 isCanonicalUnitReady(selected)
                   ? t("logDelivery.field.quantityWithUnit", {
-                      unit: t(
-                        `inventory.ops.unit.${selected.canonical_unit}` as
-                          | "inventory.ops.unit.g"
-                          | "inventory.ops.unit.ml"
-                          | "inventory.ops.unit.each"
-                      )
+                      unit: selected.unit
                     })
                   : t("logDelivery.field.quantity")
               }
