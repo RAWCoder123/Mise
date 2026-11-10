@@ -9,6 +9,7 @@ import type { OperationalFinding } from "./operationalFindings";
 import type { AutonomyLevel } from "./operationalStatus";
 import type { RestaurantTask } from "./restaurantTasks";
 import { createId } from "./miseDomain";
+import { normalizeActivityRecalculationFailureReason } from "./activityRecalculationFailureReasonIdentity";
 
 export type ActivityType =
   | "forecast_updated"
@@ -396,8 +397,12 @@ export function fromRecalculationRunActivity(run: {
     title: succeeded ? "Opening recalculation completed" : "Scheduled recalculation failed",
     summary: succeeded
       ? "Mise refreshed forecasts, recommendations, and insights for the operating day."
-      : `Attempt ${run.attempt} of the ${run.cycle.replace(/_/g, " ")} recalculation did not complete. ${
-          run.failureReason ?? "No failure reason was recorded."
+      : // MISE-005ABV: pin Activity recalculation failureReason under ASCII C.
+        // Soft-null restores the intentional "No failure reason was recorded."
+        // fallthrough. Cycle underscore-humanize stays on the prior path.
+        `Attempt ${run.attempt} of the ${run.cycle.replace(/_/g, " ")} recalculation did not complete. ${
+          normalizeActivityRecalculationFailureReason(run.failureReason) ??
+          "No failure reason was recorded."
         }`,
     triggerType: "recalculation",
     triggerReference: run.id,
@@ -423,7 +428,9 @@ export function fromRecalculationRunActivity(run: {
       : run.timedOut
         ? "recalculation_timed_out"
         : "recalculation_failed",
-    errorMessage: succeeded ? null : run.failureReason,
+    errorMessage: succeeded
+      ? null
+      : normalizeActivityRecalculationFailureReason(run.failureReason),
     idempotencyKey: `recalculation_run:${run.id}`
   });
 }
