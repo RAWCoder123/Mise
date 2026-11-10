@@ -22,6 +22,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import { resolveInventoryOutboxResolutionReasonMessageKey } from "../../services/domain/presentationInventoryOutboxResolutionReasonIdentity";
 import {
   addInventoryItemToOrder,
   fetchInventoryItemOutlook,
@@ -628,6 +629,12 @@ function QueueEvidenceRow({
   const tone = queueTone(entry);
   const statusKey = queueStatusKey(entry);
   const statusLabel = t(`inventory.ops.queue.status.${statusKey}` as "inventory.ops.queue.status.pending");
+  // MISE-005ABS: localize inventory outbox resolutionReason under ASCII C.
+  // Soft-null / unknown / unsafe tokens use localized reasonCode copy instead of
+  // inventing raw machine-token display or blank-looking reason chrome.
+  const resolutionReasonKey = resolveInventoryOutboxResolutionReasonMessageKey(
+    entry.resolutionReason
+  );
   return (
     <View
       style={styles.queueRow}
@@ -645,8 +652,8 @@ function QueueEvidenceRow({
           {t(`inventory.ops.unit.${entry.event.canonicalUnit}` as "inventory.ops.unit.g")}
         </Text>
         <Text style={styles.queueMeta}>
-          {entry.resolutionReason
-            ? t("inventory.ops.queue.reason", { reason: entry.resolutionReason })
+          {resolutionReasonKey
+            ? t("inventory.ops.queue.reason", { reason: t(resolutionReasonKey) })
             : t("inventory.ops.queue.attempts", { count: formatNumber(entry.attemptCount) })}
         </Text>
       </View>
