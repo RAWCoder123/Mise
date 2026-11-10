@@ -20,6 +20,7 @@ import {
   type ActivityEvent,
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
+import { normalizeActivityEvidenceType } from "../../services/domain/presentationActivityEvidenceTypeIdentity";
 import { fetchActivityEvents } from "../../services/miseService";
 import { captureMiseError } from "../../services/telemetry";
 
@@ -209,11 +210,37 @@ export default function ActivityHistoryScreen() {
                     {event.evidenceReferences.length > 0 ? (
                       <View style={styles.evidenceBlock}>
                         <Text style={styles.detailLine}>{t("activity.detail.evidence")}</Text>
-                        {event.evidenceReferences.slice(0, 4).map((evidence) => (
-                          <Text key={`${evidence.type}:${evidence.id}`} style={styles.evidenceLine}>
-                            {evidence.type.replace(/_/g, " ")} — {evidence.summary}
-                          </Text>
-                        ))}
+                        {event.evidenceReferences.slice(0, 4).map((evidence) => {
+                          // MISE-005ABN: pin Activity expanded evidence.type to
+                          // ASCII C. Soft-null empty / Unicode-padded / unsafe
+                          // evidence types so evidence-line copy cannot invent
+                          // a clean type via Unicode String#trim or render
+                          // blank-looking evidence type identity through the
+                          // prior always-pass `evidence.type.replace` path.
+                          // Soft-null restores the empty-type fallback (`""`
+                          // before the em-dash). Underscore→space humanize
+                          // stays a post-normalize step on the safe token
+                          // only. Leave evidence.summary display (#1155 /
+                          // MISE-005YW), relatedEntityType (#1200),
+                          // triggerType (#1201), relatedEntityId / actionId /
+                          // triggerReference (#1198 / #1199 / #1197),
+                          // Autonomy actionType / evidence.type leave-alone
+                          // (#254 / #239 / #273), restaurant-tasks evidence
+                          // type (#856), finding-decision evidence type
+                          // (#793), Activity title/summary i18n (#271), and
+                          // Activity hub label i18n (#239) alone.
+                          const activityEvidenceDisplayType =
+                            normalizeActivityEvidenceType(evidence.type) ?? "";
+                          return (
+                            <Text
+                              key={`${evidence.type}:${evidence.id}`}
+                              style={styles.evidenceLine}
+                            >
+                              {activityEvidenceDisplayType.replace(/_/g, " ")} —{" "}
+                              {evidence.summary}
+                            </Text>
+                          );
+                        })}
                       </View>
                     ) : null}
                     {Object.keys(event.metadata).length > 0 ? (
