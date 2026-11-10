@@ -18,6 +18,7 @@ import {
   canRestaurantRoleCompleteSharedTask,
   type RestaurantTask
 } from "../../services/domain/restaurantTasks";
+import { normalizeTaskDetailCompletionResult } from "../../services/domain/presentationTaskDetailCompletionResultIdentity";
 import {
   canRestaurantRoleActOnTodayTask,
   type OperationalTodayTask,
@@ -243,6 +244,16 @@ export default function TaskDetailScreen() {
               ? "tasks.assigned.manager"
               : "tasks.assigned.staff"
         );
+    // MISE-005ABM: soft-null Unicode-padded / empty / control-bearing
+    // completionResult so the intentional hide owns blank Result chrome
+    // instead of inventing a clean body via domain Unicode trim / \s
+    // collapse, and instead of always-passing raw truthy padding into
+    // instructionsBody. Leave #824 domain complete/hydrate, #1223 Timeline
+    // presentation.completionResult, #1025 noInstructions, and #883/#1027
+    // evidence notes alone.
+    const taskDetailCompletionResult = normalizeTaskDetailCompletionResult(
+      sharedTask.completionResult
+    );
 
     return (
       <Screen title={t("tasks.title")} titleAlign="center" leadingAction={<BackAction />}
@@ -322,7 +333,9 @@ export default function TaskDetailScreen() {
           {completed ? (
             <View style={styles.instructions}>
               <Text style={styles.sectionTitle}>{t("tasks.shared.result")}</Text>
-              <Text style={styles.instructionsBody}>{sharedTask.completionResult}</Text>
+              {taskDetailCompletionResult ? (
+                <Text style={styles.instructionsBody}>{taskDetailCompletionResult}</Text>
+              ) : null}
               {sharedTask.completionEvidence.map((entry, index) => (
                 <Text key={index} style={styles.evidenceText}>
                   {String(entry.note ?? entry.label ?? entry.type ?? t("tasks.shared.evidence"))}
