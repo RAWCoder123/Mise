@@ -8,6 +8,7 @@ import {
   HelpCircle,
   Mail,
   PackageMinus,
+  Receipt,
   ScanLine,
   Settings,
   Sunrise,
@@ -87,6 +88,12 @@ export default function MoreScreen() {
             title={t("more.row.waste.title")}
             icon={<PackageMinus size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/waste" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.purchaseLines.title")}
+            icon={<Receipt size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/purchase-lines" as never)}
           />
           <OperationalRow
             density="menu"
