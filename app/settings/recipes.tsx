@@ -24,6 +24,7 @@ import {
   fetchRecipeBaselineSummary,
   updateRecipeBaselineIngredient
 } from "../../services/miseService";
+import { normalizeRecipesIngredientUnit } from "../../services/domain/presentationRecipesIngredientUnitIdentity";
 import {
   presentRestaurantScopedHubActionsEditable,
   resolveRestaurantScopedHubLoadState
@@ -557,7 +558,11 @@ function RecipeBaselineBuilder({
           />
         </View>
         <View style={styles.unitPreview}>
-          <Text style={styles.unitPreviewValue}>{selectedInventoryItem?.unit ?? "--"}</Text>
+          {/* MISE-005ABI: pin Settings Recipes builder unit preview to ASCII C. */}
+          <Text style={styles.unitPreviewValue}>
+            {normalizeRecipesIngredientUnit(selectedInventoryItem?.unit) ||
+              t("recipes.ingredient.unit.none")}
+          </Text>
           <Text style={styles.unitPreviewLabel}>{t("recipes.field.unit")}</Text>
         </View>
       </View>
@@ -683,6 +688,9 @@ function RecipeRow({
               const isBusy = savingMappingId !== null;
               const parsed = parsedQuantity(draftValue);
               const isDirty = parsed !== null && parsed !== ingredient.quantityUsedPerSale;
+              // MISE-005ABI: pin Settings Recipes ingredient.unit display to ASCII C.
+              const recipesIngredientDisplayUnit =
+                normalizeRecipesIngredientUnit(ingredient.unit) || t("recipes.ingredient.unit.none");
 
               return (
                 <View key={ingredient.mappingId} style={styles.ingredientEditor}>
@@ -723,7 +731,7 @@ function RecipeRow({
                           accessibilityLabel={t("recipes.row.readOnlyAccessibility", {
                             ingredient: ingredient.itemName,
                             quantity: draftValue,
-                            unit: ingredient.unit
+                            unit: recipesIngredientDisplayUnit
                           })}
                           style={styles.readOnlyQuantity}
                         >
@@ -731,7 +739,7 @@ function RecipeRow({
                         </Text>
                       )}
                       <Text style={styles.quantityUnit} numberOfLines={1}>
-                        {ingredient.unit}
+                        {recipesIngredientDisplayUnit}
                       </Text>
                     </View>
                     {canManage ? (
