@@ -56,6 +56,7 @@ import type {
   InventoryEventType
 } from "./domain/inventoryLedger";
 import { normalizeOperationalQuantity } from "./domain/operationalMapping";
+import { requireOptionalReceiptExpiresOn } from "./domain/receiptExpiration";
 import type {
   SupplierDeliveryItemRecord,
   SupplierDeliveryRecord,
@@ -98,6 +99,8 @@ export interface InventoryOperationClientInput {
   sourceReference?: unknown;
   reasonCode?: unknown;
   note?: unknown;
+  /** Optional lot use-by date (YYYY-MM-DD). Receipts only. */
+  expiresOn?: unknown;
 }
 
 export type ValidatedInventoryOperation = Omit<
@@ -129,6 +132,13 @@ export function requireInventoryOperation(
   const sourceReference = optionalBoundedText(input.sourceReference, "reference", 200);
   const reasonCode = optionalBoundedText(input.reasonCode, "reason", 80);
   const note = optionalBoundedText(input.note, "note", 500);
+  const expiresOn = requireOptionalReceiptExpiresOn(input.expiresOn);
+  if (expiresOn !== null && eventType !== "receipt") {
+    throw new Error("Use-by dates can only be recorded on receipts.");
+  }
+  const metadata: Record<string, string> = {};
+  if (note) metadata.note = note;
+  if (expiresOn) metadata.expires_on = expiresOn;
   return {
     restaurantId,
     inventoryItemId,
@@ -140,7 +150,7 @@ export function requireInventoryOperation(
     sourceReference,
     reasonCode,
     supersedesEventId: null,
-    metadata: note ? { note } : {}
+    metadata
   };
 }
 

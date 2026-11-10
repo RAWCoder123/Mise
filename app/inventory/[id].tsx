@@ -50,6 +50,7 @@ export default function InventoryDetailScreen() {
   const [queueEntries, setQueueEntries] = useState<InventoryOutboxEntry[]>([]);
   const [operation, setOperation] = useState<InventoryOperatorAction>("count");
   const [quantityText, setQuantityText] = useState("");
+  const [expiresOnText, setExpiresOnText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [parLevel, setParLevel] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
@@ -124,6 +125,7 @@ export default function InventoryDetailScreen() {
     setQueueEntries([]);
     setOperation("count");
     setQuantityText("");
+    setExpiresOnText("");
     setNoteText("");
     setParLevel("");
     setReorderThreshold("");
@@ -235,7 +237,8 @@ export default function InventoryDetailScreen() {
         quantity,
         canonicalUnit: item.canonical_unit,
         effectiveAt: new Date().toISOString(),
-        note: noteText.trim() || undefined
+        note: noteText.trim() || undefined,
+        expiresOn: operation === "receipt" ? expiresOnText.trim() || undefined : undefined
       });
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
@@ -246,6 +249,7 @@ export default function InventoryDetailScreen() {
       if (activeRestaurantIdRef.current !== restaurantId) return;
 
       setQuantityText(operation === "stockout" ? "0" : "");
+      setExpiresOnText("");
       setNoteText("");
       setMessage(describeFlushResult(flushSummary, t));
       setMessageIsError(flushSummary.conflicted > 0 || flushSummary.rejected > 0);
@@ -512,6 +516,7 @@ export default function InventoryDetailScreen() {
                       onValueChange={(value) => {
                         setOperation(value);
                         setQuantityError(undefined);
+                        setExpiresOnText("");
                         if (value === "stockout") setQuantityText("0");
                       }}
                     />
@@ -535,6 +540,16 @@ export default function InventoryDetailScreen() {
                         error={quantityError}
                       />
                     )}
+                    {operation === "receipt" ? (
+                      <Field
+                        label={t("inventory.ops.expiresOn")}
+                        value={expiresOnText}
+                        onChangeText={setExpiresOnText}
+                        editable={actionsEditable && !busy}
+                        keyboardType="numbers-and-punctuation"
+                        placeholder={t("inventory.ops.expiresOnPlaceholder")}
+                      />
+                    ) : null}
                     <Field
                       label={t("inventory.ops.note")}
                       value={noteText}
@@ -661,14 +676,16 @@ function Field({
   onChangeText,
   editable,
   error,
-  keyboardType = "decimal-pad"
+  keyboardType = "decimal-pad",
+  placeholder
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   editable: boolean;
   error?: string;
-  keyboardType?: "decimal-pad" | "default";
+  keyboardType?: "decimal-pad" | "default" | "numbers-and-punctuation";
+  placeholder?: string;
 }) {
   return (
     <View style={styles.field}>
@@ -681,6 +698,10 @@ function Field({
         onChangeText={onChangeText}
         editable={editable}
         keyboardType={keyboardType}
+        placeholder={placeholder}
+        placeholderTextColor={placeholder ? colors.faint : undefined}
+        autoCapitalize={keyboardType === "numbers-and-punctuation" ? "none" : undefined}
+        autoCorrect={keyboardType === "numbers-and-punctuation" ? false : undefined}
         selectTextOnFocus={keyboardType === "decimal-pad"}
         style={[styles.input, !editable && styles.inputReadOnly, error && styles.inputError]}
       />
