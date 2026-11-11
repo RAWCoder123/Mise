@@ -23,6 +23,7 @@ test("operational screens reject late requests and render only active-restaurant
     orderDetail: source("app/orders/[id].tsx"),
     restaurantMemory: source("app/more/restaurant-memory.tsx"),
     logDelivery: source("app/more/log-delivery.tsx"),
+    purchaseLineCorrection: source("app/more/purchase-line-correction.tsx"),
     createTask: source("app/more/create-task.tsx")
   };
 
@@ -57,6 +58,8 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.restaurantMemory, /hubReady\s*\?\s*memories\s*:\s*\[\]/);
   assert.match(screens.logDelivery, /hubReady\s*\?\s*items\s*:\s*\[\]/);
   assert.match(screens.logDelivery, /hubReady\s*\?\s*history\s*:\s*\[\]/);
+  assert.match(screens.purchaseLineCorrection, /hubReady\s*\?\s*history\s*:\s*\[\]/);
+  assert.match(screens.purchaseLineCorrection, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.pos, /visibleIntegration/);
   assert.match(screens.pos, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.createTask, /presentRestaurantScopedHubActionsEditable/);
