@@ -35,6 +35,7 @@ import { useLocale } from "../../contexts/LocaleContext";
 import { useMiseSession } from "../../contexts/MiseSessionContext";
 import { localizeInventoryPrediction } from "../../i18n/inventoryPresentation";
 import type { InventoryOutboxEntry } from "../../services/domain/inventoryOutbox";
+import { buildInventoryOnHandValuation } from "../../services/domain/inventoryValuation";
 import {
   fetchInventoryOutlookItems,
   fetchOpenInventoryCountSession,
@@ -42,13 +43,17 @@ import {
   summarizeInventoryOutlooks
 } from "../../services/miseService";
 import { resolveRestaurantScopedHubLoadState } from "../../services/presentation/hubLoadState";
+import {
+  presentInventoryHealthBodyWithValuation,
+  presentInventoryOnHandValuationLine
+} from "../../services/presentation/inventoryValuationPresentation";
 import { canDraftInventoryCount } from "../../services/tenantAccess";
 import type { InventoryItem, InventoryOutlookItem, InventoryStatus } from "../../types/mise";
 
 type InventoryFilter = "All" | "At risk" | "Watch" | "Good";
 
 export default function InventoryScreen() {
-  const { formatNumber, t } = useLocale();
+  const { formatCurrency, formatNumber, t } = useLocale();
   const { restaurant, memberships } = useMiseSession();
   const canDraftCount = canDraftInventoryCount(memberships, restaurant?.id ?? "");
   const [outlooks, setOutlooks] = useState<InventoryOutlookItem[]>([]);
@@ -161,7 +166,7 @@ export default function InventoryScreen() {
     wellStocked: t("inventory.health.wellStocked"),
     empty: t("inventory.health.empty")
   };
-  const healthBody = reorderCount > 0
+  const riskBody = reorderCount > 0
     ? t(reorderCount === 1 ? "inventory.health.risk.one" : "inventory.health.risk.other", {
         count: formatNumber(reorderCount)
       })
@@ -170,12 +175,36 @@ export default function InventoryScreen() {
           count: formatNumber(healthCounts.watch)
         })
       : t("inventory.health.clear");
-  const healthAccessibilityLabel = buildInventoryHealthAccessibilityLabel({
-    counts: healthCounts,
-    labels: healthLabels,
-    formatCount: (value) => formatNumber(value),
-    formatPercentage: (value) => formatNumber(value / 100, { style: "percent", maximumFractionDigits: 0 })
+  const valuation = restaurant
+    ? buildInventoryOnHandValuation({
+        restaurantId: restaurant.id,
+        items: visibleOutlooks.map(({ item }) => item)
+      })
+    : null;
+  const valuationLine = valuation
+    ? presentInventoryOnHandValuationLine({
+        valuation,
+        formatCurrency: (value) => formatCurrency(value, { maximumFractionDigits: 0 }),
+        formatNumber: (value) => formatNumber(value),
+        t
+      })
+    : null;
+  const healthBody = presentInventoryHealthBodyWithValuation({
+    riskBody,
+    valuationLine
   });
+  const healthAccessibilityLabel = [
+    buildInventoryHealthAccessibilityLabel({
+      counts: healthCounts,
+      labels: healthLabels,
+      formatCount: (value) => formatNumber(value),
+      formatPercentage: (value) => formatNumber(value / 100, { style: "percent", maximumFractionDigits: 0 })
+    }),
+    valuationLine
+  ]
+    .filter(Boolean)
+    .join(" ");
+
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
