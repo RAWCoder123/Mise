@@ -82,6 +82,7 @@ import {
   normalizePurchaseLineRow,
   toPurchaseLinePayload
 } from "../domain/purchaseLines";
+import { normalizePurchaseLineItemKeyAliasRow } from "../domain/purchaseLineItemKeyAliases";
 import {
   normalizeAppUser,
   normalizeInsight,
@@ -1619,6 +1620,37 @@ export function createSupabaseRepository(): MiseRepository {
       });
       if (error) throw error;
       return normalizePurchaseLineRow(data as Record<string, unknown>);
+    },
+
+    async fetchPurchaseLineItemKeyAliases(restaurantId) {
+      const { data, error } = await client
+        .from("purchase_line_item_key_aliases")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("aliased_at", { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map(normalizePurchaseLineItemKeyAliasRow);
+    },
+
+    async aliasPurchaseLineItemKey(input) {
+      const { data, error } = await client.rpc("alias_purchase_line_item_key", {
+        p_restaurant_id: input.restaurantId,
+        p_alias_item_key: input.aliasItemKey,
+        p_canonical_item_key: input.canonicalItemKey,
+        p_supplier_id: input.supplierId ?? null
+      });
+      if (error) throw error;
+      return normalizePurchaseLineItemKeyAliasRow(data as Record<string, unknown>);
+    },
+
+    async revokePurchaseLineItemKeyAlias(restaurantId, aliasId) {
+      const { data, error } = await client.rpc("revoke_purchase_line_item_key_alias", {
+        p_restaurant_id: restaurantId,
+        p_alias_id: aliasId
+      });
+      if (error) throw error;
+      return normalizePurchaseLineItemKeyAliasRow(data as Record<string, unknown>);
     },
 
     async fetchPurchaseLineNetByItem(restaurantId) {

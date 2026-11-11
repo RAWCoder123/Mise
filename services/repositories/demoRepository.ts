@@ -119,9 +119,14 @@ import {
   resolvePurchaseLineConfidence,
   type NormalizedPurchaseLineInput,
   type PurchaseLine,
-  type PurchaseLineNetByItem,
   type PurchaseLineSource
 } from "../domain/purchaseLines";
+import {
+  PURCHASE_LINE_ITEM_KEY_ALIAS_EVIDENCE_VERSION,
+  netPurchaseLinesWithAliases,
+  requirePurchaseLineItemKey,
+  type PurchaseLineItemKeyAlias
+} from "../domain/purchaseLineItemKeyAliases";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
 import {
   createDemoSupplier,
@@ -2433,57 +2438,123 @@ export function createLocalDemoRepository(): MiseRepository {
 
     async fetchPurchaseLineNetByItem(restaurantId) {
       const state = await readReadyDemoState(restaurantId);
-      const superseded = new Set(
-        (state.purchaseLines ?? [])
-          .map((line) => line.supersedesLineId)
-          .filter((id): id is string => id !== null)
+      const lines = (state.purchaseLines ?? []).filter(
+        (line) => line.restaurantId === restaurantId
       );
-      const groups = new Map<string, PurchaseLineNetByItem>();
-      for (const line of state.purchaseLines ?? []) {
-        if (line.restaurantId !== restaurantId || superseded.has(line.id)) continue;
-        // Never net across supplier, unit or currency: that would be a larger
-        // claim than the documents support.
-        const key = [
-          line.supplierId ?? "",
-          line.normalizedItemKey ?? "",
-          line.unitOfMeasure ?? "",
-          line.currency ?? ""
-        ].join("\u0000");
-        const group = groups.get(key) ?? {
-          supplierId: line.supplierId,
-          normalizedItemKey: line.normalizedItemKey,
-          unitOfMeasure: line.unitOfMeasure,
-          currency: line.currency,
-          purchaseLineCount: 0,
-          creditLineCount: 0,
-          netQuantity: null,
-          netExtendedPrice: null,
-          unmatchedCredit: false,
-          firstTransactionDate: line.transactionDate,
-          lastTransactionDate: line.transactionDate
-        };
-        const sign = line.lineType === "credit" ? -1 : 1;
-        if (line.lineType === "credit") group.creditLineCount += 1;
-        else group.purchaseLineCount += 1;
-        if (line.quantity !== null) {
-          group.netQuantity = (group.netQuantity ?? 0) + sign * line.quantity;
+      const aliases = (state.purchaseLineItemKeyAliases ?? []).filter(
+        (alias) => alias.restaurantId === restaurantId
+      );
+      // Never net across supplier, unit or currency: that would be a larger
+      // claim than the documents support. Manager-verified exact aliases apply
+      // one hop, matching public.list_purchase_line_net_by_item.
+      return netPurchaseLinesWithAliases(lines, aliases);
+    },
+
+    async fetchPurchaseLineItemKeyAliases(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return (state.purchaseLineItemKeyAliases ?? []).filter(
+        (alias) => alias.restaurantId === restaurantId
+      );
+    },
+
+    async aliasPurchaseLineItemKey(input) {
+      return mutateDemoState((state) => {
+        if (!Array.isArray(state.purchaseLineItemKeyAliases)) {
+          state.purchaseLineItemKeyAliases = [];
         }
-        if (line.extendedPrice !== null) {
-          group.netExtendedPrice = (group.netExtendedPrice ?? 0) + sign * line.extendedPrice;
+        const aliasItemKey = requirePurchaseLineItemKey(input.aliasItemKey);
+        const canonicalItemKey = requirePurchaseLineItemKey(input.canonicalItemKey);
+        if (aliasItemKey === canonicalItemKey) {
+          throw new Error("Alias and canonical purchase item keys must differ");
         }
-        if (line.transactionDate < group.firstTransactionDate!) {
-          group.firstTransactionDate = line.transactionDate;
+        const supplierId = input.supplierId ?? null;
+        if (
+          supplierId &&
+          !state.suppliers.some(
+            (supplier) =>
+              supplier.restaurant_id === input.restaurantId && supplier.id === supplierId
+          )
+        ) {
+          throw new Error("Supplier identity is not available for this restaurant.");
         }
-        if (line.transactionDate > group.lastTransactionDate!) {
-          group.lastTransactionDate = line.transactionDate;
-        }
-        groups.set(key, group);
-      }
-      return [...groups.values()]
-        .map((group) => ({ ...group, unmatchedCredit: group.purchaseLineCount === 0 }))
-        .sort((left, right) =>
-          (left.normalizedItemKey ?? "").localeCompare(right.normalizedItemKey ?? "")
+        const verified = state.purchaseLineItemKeyAliases.filter(
+          (alias) =>
+            alias.restaurantId === input.restaurantId &&
+            alias.supplierId === supplierId &&
+            alias.status === "verified"
         );
+        if (verified.some((alias) => alias.aliasItemKey === canonicalItemKey)) {
+          throw new Error("Canonical purchase item key is already an alias source");
+        }
+        if (verified.some((alias) => alias.canonicalItemKey === aliasItemKey)) {
+          throw new Error("Alias purchase item key is already a canonical target");
+        }
+        const existing = verified.find((alias) => alias.aliasItemKey === aliasItemKey);
+        if (existing && existing.canonicalItemKey === canonicalItemKey) {
+          return existing;
+        }
+        const aliasedAt = new Date().toISOString();
+        if (existing) {
+          existing.status = "revoked";
+          existing.revokedBy = DEMO_USER_ID;
+          existing.revokedAt = aliasedAt;
+        }
+        const alias: PurchaseLineItemKeyAlias = {
+          id: createId("purchase_line_item_key_alias"),
+          restaurantId: input.restaurantId,
+          supplierId,
+          aliasItemKey,
+          canonicalItemKey,
+          status: "verified",
+          evidenceVersion: PURCHASE_LINE_ITEM_KEY_ALIAS_EVIDENCE_VERSION,
+          aliasedBy: DEMO_USER_ID,
+          aliasedAt,
+          revokedBy: null,
+          revokedAt: null
+        };
+        state.purchaseLineItemKeyAliases.push(alias);
+        appendDemoAuditLog(state, {
+          restaurant_id: input.restaurantId,
+          action: "purchase_line_item_key_aliased",
+          entity_table: "purchase_line_item_key_aliases",
+          entity_id: alias.id,
+          metadata: {
+            alias_item_key: aliasItemKey,
+            canonical_item_key: canonicalItemKey,
+            supplier_id: supplierId,
+            replaced_alias_id: existing?.id ?? null
+          }
+        });
+        return alias;
+      });
+    },
+
+    async revokePurchaseLineItemKeyAlias(restaurantId, aliasId) {
+      return mutateDemoState((state) => {
+        if (!Array.isArray(state.purchaseLineItemKeyAliases)) {
+          state.purchaseLineItemKeyAliases = [];
+        }
+        const alias = state.purchaseLineItemKeyAliases.find(
+          (candidate) => candidate.restaurantId === restaurantId && candidate.id === aliasId
+        );
+        if (!alias) throw new Error("Purchase line item key alias not found");
+        if (alias.status === "revoked") return alias;
+        alias.status = "revoked";
+        alias.revokedBy = DEMO_USER_ID;
+        alias.revokedAt = new Date().toISOString();
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "purchase_line_item_key_alias_revoked",
+          entity_table: "purchase_line_item_key_aliases",
+          entity_id: alias.id,
+          metadata: {
+            alias_item_key: alias.aliasItemKey,
+            canonical_item_key: alias.canonicalItemKey,
+            supplier_id: alias.supplierId
+          }
+        });
+        return alias;
+      });
     },
 
     async fetchPurchaseDecisionPatterns(restaurantId) {
