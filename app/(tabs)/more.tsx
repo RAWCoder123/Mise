@@ -5,6 +5,7 @@ import {
   Brain,
   ChevronRight,
   ClipboardList,
+  FilePenLine,
   HelpCircle,
   Mail,
   PackageMinus,
@@ -87,6 +88,12 @@ export default function MoreScreen() {
             title={t("more.row.waste.title")}
             icon={<PackageMinus size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/waste" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.purchaseLineCorrection.title")}
+            icon={<FilePenLine size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/purchase-line-correction" as never)}
           />
           <OperationalRow
             density="menu"
