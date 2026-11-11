@@ -23,6 +23,7 @@ const HUB_CONSUMER_FILES = [
   "app/orders/[id].tsx",
   "app/more/restaurant-memory.tsx",
   "app/more/log-delivery.tsx",
+  "app/more/purchase-line-entry.tsx",
   "app/more/create-task.tsx"
 ];
 
