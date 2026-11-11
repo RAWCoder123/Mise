@@ -1,9 +1,19 @@
 import type { AppLocale, MessageKey, MessageValues } from "../../i18n/catalog";
 import type { AttentionCard, Insight, PosSale, Restaurant } from "../../types/mise";
+import type { AskMisePurchaseEvidence } from "../domain/askMisePurchaseEvidence";
 import type { OperationalTodayTask } from "../domain/todayTasks";
 import { presentInsight, presentOperationalTodayTask } from "../presentation/operationsPresentation";
 
-export type AskMiseIntent = "priorities" | "stock" | "orders" | "sales" | "briefing" | "prep" | "waste" | "general";
+export type AskMiseIntent =
+  | "priorities"
+  | "stock"
+  | "orders"
+  | "invoices"
+  | "sales"
+  | "briefing"
+  | "prep"
+  | "waste"
+  | "general";
 
 type Translator = (key: MessageKey, values?: MessageValues) => string;
 
@@ -30,6 +40,11 @@ export interface AskMiseRestaurantContext {
   };
   operationalTasks: readonly OperationalTodayTask[];
   restaurantCurrency: string;
+  /**
+   * Optional MISE-004C purchase-line net evidence. When omitted or empty, invoice
+   * questions fail closed instead of inventing spend from estimated order costs.
+   */
+  purchaseEvidence?: AskMisePurchaseEvidence | null;
 }
 
 export interface AskMiseInput {
@@ -51,6 +66,8 @@ export interface AskMiseReply {
 
 const stockKeywords = /stock|low|inventory|inventario|existencias|bajo|par|count|库存|盘点|短缺/;
 const orderKeywords = /order|supplier|pedido|proveedor|draft|reorder|订货|订单|供应商/;
+const invoiceKeywords =
+  /invoice|invoices|credit memo|credit memos|purchase line|purchase lines|factura|facturas|nota de cr[eé]dito|发票|进项|采购金额|invoice spend|supplier spend|gasto.*factura|spend.*(invoice|supplier)/;
 const salesKeywords = /sales|revenue|venta|ingreso|sold|cover|销售|营收|营业额/;
 const priorityKeywords = /priorit|prioridad|focus|urgent|today|hoy|优先|今天|今日/;
 const briefingKeywords = /brief|status|overview|summary|how.*(we|we'?re|restaurant)|resumen|estado|概况|简报/;
@@ -61,6 +78,8 @@ const wasteKeywords = /waste|spoil|overstock|excess|desperdicio|exceso|损耗|�
 export function classifyAskMiseIntent(question: string): AskMiseIntent {
   const normalized = question.trim().toLowerCase();
   if (!normalized) return "general";
+  // Invoice/purchase-line spend before prep ("line") and order/supplier questions.
+  if (invoiceKeywords.test(normalized)) return "invoices";
   if (prepKeywords.test(normalized)) return "prep";
   if (wasteKeywords.test(normalized)) return "waste";
   if (stockKeywords.test(normalized)) return "stock";
@@ -90,6 +109,8 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   const topTaskTitles = priorities.map((task) => presentOperationalTodayTask(helpers.locale, task).title);
   const topSale = summary.topItems[0]?.item_name?.trim() || null;
 
+  const purchaseEvidence = summary.purchaseEvidence ?? null;
+
   const thinkingSteps = buildThinkingSteps({
     intent,
     restaurantName: restaurant.name,
@@ -98,10 +119,20 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
     pendingRecommendations: summary.pendingRecommendations,
     salesToday: summary.salesToday,
     currency: summary.restaurantCurrency,
+    purchaseEvidence,
     helpers
   });
 
   switch (intent) {
+    case "invoices": {
+      return {
+        intent,
+        thinkingSteps,
+        answer: buildInvoiceAnswer(purchaseEvidence, helpers),
+        showPriorities: false,
+        priorities: []
+      };
+    }
     case "stock": {
       const answer =
         stockRisk > 0
@@ -302,6 +333,91 @@ export function answerAskMise(input: AskMiseInput): AskMiseReply {
   }
 }
 
+function buildInvoiceAnswer(
+  purchaseEvidence: AskMisePurchaseEvidence | null,
+  helpers: AskMiseHelpers
+): string {
+  const { t } = helpers;
+  if (!purchaseEvidence || purchaseEvidence.groupCount === 0) {
+    return t("ask.answer.invoices.empty");
+  }
+
+  if (purchaseEvidence.pricedGroupCount === 0) {
+    return [
+      t("ask.answer.invoices.unpriced", {
+        count: helpers.formatNumber(purchaseEvidence.groupCount)
+      }),
+      purchaseEvidence.unmatchedCreditCount > 0
+        ? t(
+            purchaseEvidence.unmatchedCreditCount === 1
+              ? "ask.answer.invoices.unmatched.one"
+              : "ask.answer.invoices.unmatched.other",
+            { count: helpers.formatNumber(purchaseEvidence.unmatchedCreditCount) }
+          )
+        : null,
+      t("ask.answer.invoices.next")
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  if (purchaseEvidence.multiCurrency || purchaseEvidence.netSpend === null || !purchaseEvidence.currency) {
+    return [
+      t("ask.answer.invoices.multiCurrency", {
+        count: helpers.formatNumber(purchaseEvidence.pricedGroupCount)
+      }),
+      formatInvoiceTopItems(purchaseEvidence, helpers),
+      purchaseEvidence.unmatchedCreditCount > 0
+        ? t(
+            purchaseEvidence.unmatchedCreditCount === 1
+              ? "ask.answer.invoices.unmatched.one"
+              : "ask.answer.invoices.unmatched.other",
+            { count: helpers.formatNumber(purchaseEvidence.unmatchedCreditCount) }
+          )
+        : null,
+      t("ask.answer.invoices.next")
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return [
+    t("ask.answer.invoices.lead", {
+      spend: helpers.formatCompactCurrency(purchaseEvidence.netSpend, purchaseEvidence.currency),
+      count: helpers.formatNumber(purchaseEvidence.pricedGroupCount)
+    }),
+    formatInvoiceTopItems(purchaseEvidence, helpers),
+    purchaseEvidence.unmatchedCreditCount > 0
+      ? t(
+          purchaseEvidence.unmatchedCreditCount === 1
+            ? "ask.answer.invoices.unmatched.one"
+            : "ask.answer.invoices.unmatched.other",
+          { count: helpers.formatNumber(purchaseEvidence.unmatchedCreditCount) }
+        )
+      : null,
+    t("ask.answer.invoices.next")
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function formatInvoiceTopItems(
+  purchaseEvidence: AskMisePurchaseEvidence,
+  helpers: AskMiseHelpers
+): string | null {
+  if (purchaseEvidence.topItems.length === 0) return null;
+  const items = purchaseEvidence.topItems
+    .map((item) => {
+      const label = item.normalizedItemKey?.trim() || helpers.t("ask.answer.invoices.unkeyed");
+      const amount = helpers.formatCompactCurrency(item.netExtendedPrice, item.currency);
+      return item.unmatchedCredit
+        ? helpers.t("ask.answer.invoices.item.unmatched", { item: label, amount })
+        : helpers.t("ask.answer.invoices.item", { item: label, amount });
+    })
+    .join("; ");
+  return helpers.t("ask.answer.invoices.named", { items });
+}
+
 function buildThinkingSteps(input: {
   intent: AskMiseIntent;
   restaurantName: string;
@@ -310,6 +426,7 @@ function buildThinkingSteps(input: {
   pendingRecommendations: number;
   salesToday: number;
   currency: string;
+  purchaseEvidence: AskMisePurchaseEvidence | null;
   helpers: AskMiseHelpers;
 }): string[] {
   const { helpers, intent } = input;
@@ -338,6 +455,38 @@ function buildThinkingSteps(input: {
           })
         : t("ask.thinking.orders.clear")
     );
+  }
+  if (intent === "invoices") {
+    const evidence = input.purchaseEvidence;
+    if (!evidence || evidence.groupCount === 0) {
+      steps.push(t("ask.thinking.invoices.empty"));
+    } else if (evidence.pricedGroupCount === 0) {
+      steps.push(
+        t("ask.thinking.invoices.unpriced", {
+          count: helpers.formatNumber(evidence.groupCount)
+        })
+      );
+    } else if (evidence.multiCurrency || evidence.netSpend === null || !evidence.currency) {
+      steps.push(
+        t("ask.thinking.invoices.multiCurrency", {
+          count: helpers.formatNumber(evidence.pricedGroupCount)
+        })
+      );
+    } else {
+      steps.push(
+        t("ask.thinking.invoices.spend", {
+          spend: helpers.formatCompactCurrency(evidence.netSpend, evidence.currency),
+          count: helpers.formatNumber(evidence.pricedGroupCount)
+        })
+      );
+    }
+    if (evidence && evidence.unmatchedCreditCount > 0) {
+      steps.push(
+        t("ask.thinking.invoices.unmatched", {
+          count: helpers.formatNumber(evidence.unmatchedCreditCount)
+        })
+      );
+    }
   }
   if (intent === "sales" || intent === "briefing") {
     steps.push(

@@ -15,9 +15,12 @@ import { colors, conceptTypography, icon, iconStroke, radii, typography } from "
 import { useLocale } from "../contexts/LocaleContext";
 import { useMiseSession } from "../contexts/MiseSessionContext";
 import { DEMO_DATASET } from "../services/demoData";
+import { buildAskMisePurchaseEvidence } from "../services/domain/askMisePurchaseEvidence";
+import type { AskMisePurchaseEvidence } from "../services/domain/askMisePurchaseEvidence";
 import {
   answerAskMise,
   fetchInsights,
+  fetchPurchaseLineNetByItem,
   fetchTodaySummary,
   type TodayCommandCenterSummary
 } from "../services/miseService";
@@ -63,6 +66,7 @@ export default function AskMiseScreen() {
   const { canUseDemoMode, continueWithDemo, restaurant, user } = useMiseSession();
   const [summary, setSummary] = useState<TodayCommandCenterSummary | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [purchaseEvidence, setPurchaseEvidence] = useState<AskMisePurchaseEvidence | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -86,6 +90,7 @@ export default function AskMiseScreen() {
     askGenerationRef.current += 1;
     setSummary(null);
     setInsights([]);
+    setPurchaseEvidence(null);
     setLoadedRestaurantId(null);
     setError(null);
     setMessages([]);
@@ -106,13 +111,15 @@ export default function AskMiseScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [nextSummary, nextInsights] = await Promise.all([
+      const [nextSummary, nextInsights, purchaseNets] = await Promise.all([
         fetchTodaySummary(restaurantId),
-        fetchInsights(restaurantId)
+        fetchInsights(restaurantId),
+        fetchPurchaseLineNetByItem(restaurantId)
       ]);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setSummary(nextSummary);
       setInsights(nextInsights);
+      setPurchaseEvidence(buildAskMisePurchaseEvidence(purchaseNets));
       setLoadedRestaurantId(restaurantId);
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -131,6 +138,7 @@ export default function AskMiseScreen() {
 
   const visibleSummary = loadedRestaurantId === restaurant?.id ? summary : null;
   const visibleInsights = loadedRestaurantId === restaurant?.id ? insights : [];
+  const visiblePurchaseEvidence = loadedRestaurantId === restaurant?.id ? purchaseEvidence : null;
 
   const revealLatestMessage = useCallback((animated = true) => {
     requestAnimationFrame(() => {
@@ -146,7 +154,10 @@ export default function AskMiseScreen() {
     const reply = answerAskMise({
       question,
       restaurant,
-      summary: visibleSummary,
+      summary: {
+        ...visibleSummary,
+        purchaseEvidence: visiblePurchaseEvidence
+      },
       insights: visibleInsights,
       helpers: {
         formatCompactCurrency,
@@ -186,6 +197,7 @@ export default function AskMiseScreen() {
     t,
     user?.name,
     visibleInsights,
+    visiblePurchaseEvidence,
     visibleSummary
   ]);
 
@@ -205,7 +217,10 @@ export default function AskMiseScreen() {
         const reply = answerAskMise({
           question: trimmed,
           restaurant,
-          summary: visibleSummary,
+          summary: {
+            ...visibleSummary,
+            purchaseEvidence: visiblePurchaseEvidence
+          },
           insights: visibleInsights,
           helpers: {
             formatCompactCurrency,
@@ -266,6 +281,7 @@ export default function AskMiseScreen() {
       revealLatestMessage,
       t,
       visibleInsights,
+      visiblePurchaseEvidence,
       visibleSummary
     ]
   );
@@ -302,6 +318,7 @@ export default function AskMiseScreen() {
   const suggestions = [
     t("ask.suggestion.stock"),
     t("ask.suggestion.priorities"),
+    t("ask.suggestion.invoices"),
     t("ask.suggestion.orders"),
     t("ask.suggestion.prep"),
     t("ask.suggestion.waste"),
