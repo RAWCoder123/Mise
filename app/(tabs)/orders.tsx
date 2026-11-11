@@ -30,7 +30,7 @@ import {
   fetchSupplierOrders,
   fetchSupplierSpendTrend,
   undoPurchaseRecommendationAction,
-  type SupplierSpendTrendPoint
+  type SupplierSpendTrend
 } from "../../services/miseService";
 import {
   isPurchaseAuthorityBlockedError,
@@ -69,7 +69,10 @@ export default function OrdersScreen() {
   const [recommendationAuthorities, setRecommendationAuthorities] = useState<Record<string, PurchaseAuthorityResult>>({});
   const [purchaseDecisionPatterns, setPurchaseDecisionPatterns] = useState<PurchaseDecisionPattern[]>([]);
   const [orders, setOrders] = useState<SupplierOrder[]>([]);
-  const [spendTrend, setSpendTrend] = useState<SupplierSpendTrendPoint[]>([]);
+  const [spendTrend, setSpendTrend] = useState<SupplierSpendTrend>({
+    basis: "estimated_orders",
+    points: []
+  });
   const [emailConnection, setEmailConnection] = useState<RestaurantEmailConnection | null>(null);
   const [lane, setLane] = useState<OrderLane>("drafts");
   const [quantities, setQuantities] = useState<Record<string, string>>({});
@@ -160,7 +163,7 @@ export default function OrdersScreen() {
     setRecommendations([]);
     setRecommendationAuthorities({});
     setOrders([]);
-    setSpendTrend([]);
+    setSpendTrend({ basis: "estimated_orders", points: [] });
     setEmailConnection(null);
     setQuantities({});
     setQuantityErrors({});
@@ -217,7 +220,11 @@ export default function OrdersScreen() {
   });
   const visibleRecommendations = hubReady ? recommendations : [];
   const visibleOrders = hubReady ? orders : [];
-  const visibleSpendTrend = hubReady ? spendTrend : [];
+  const visibleSpendTrend = hubReady ? spendTrend.points : [];
+  const spendSubtitleKey: MessageKey =
+    spendTrend.basis === "invoice_lines"
+      ? "orders.spend.subtitle.invoice"
+      : "orders.spend.subtitle.estimated";
   const visibleEmailConnection = hubReady ? emailConnection : null;
   const visiblePurchaseDecisionPatterns = hubReady ? purchaseDecisionPatterns : [];
   const visibleMessage = messageRestaurantId === restaurant?.id ? message : null;
@@ -755,7 +762,7 @@ export default function OrdersScreen() {
               {visibleSpendTrend.length >= 2 ? (
                 <SectionSurface
                   title={t("orders.spend.title")}
-                  subtitle={t("orders.spend.subtitle")}
+                  subtitle={t(spendSubtitleKey)}
                 >
                   <TrendLineChart
                     series={[{ values: visibleSpendTrend.map((point) => point.spend) }]}
@@ -764,13 +771,18 @@ export default function OrdersScreen() {
                     )}
                     height={116}
                     formatValue={(value) => formatCompactCurrency(value, restaurant?.currency)}
-                    accessibilityLabel={t("orders.spend.accessibility", {
-                      count: formatNumber(visibleSpendTrend.length),
-                      latest: formatCompactCurrency(
-                        visibleSpendTrend[visibleSpendTrend.length - 1]?.spend ?? 0,
-                        restaurant?.currency
-                      )
-                    })}
+                    accessibilityLabel={t(
+                      spendTrend.basis === "invoice_lines"
+                        ? "orders.spend.accessibility.invoice"
+                        : "orders.spend.accessibility.estimated",
+                      {
+                        count: formatNumber(visibleSpendTrend.length),
+                        latest: formatCompactCurrency(
+                          visibleSpendTrend[visibleSpendTrend.length - 1]?.spend ?? 0,
+                          restaurant?.currency
+                        )
+                      }
+                    )}
                   />
                 </SectionSurface>
               ) : null}

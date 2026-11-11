@@ -6,7 +6,11 @@ import {
   type OrderAutomationPolicy
 } from "../domain/orderAutomation";
 import { buildSupplierRecipientDirectory } from "../domain/supplierRecipients";
-import { buildSupplierSpendTrend, type SupplierSpendTrendPoint } from "../domain/supplierSpend";
+import {
+  resolveSupplierSpendTrend,
+  type SupplierSpendTrend,
+  type SupplierSpendTrendPoint
+} from "../domain/supplierSpend";
 import {
   PurchaseAuthorityBlockedError,
   type PurchaseAuthorityResult
@@ -190,21 +194,31 @@ export async function fetchSupplierReliabilitySummary(
   });
 }
 
-export type { SupplierSpendTrendPoint };
+export type { SupplierSpendTrend, SupplierSpendTrendPoint };
 
 /**
- * Estimated spend per day for sent/completed supplier orders, priced from
- * the bounded recommendation history and current inventory unit costs.
+ * Supplier spend trend for the Orders hub. Prefers current MISE-004C purchase
+ * line signed extended prices when they cover at least two transaction dates;
+ * otherwise falls back to estimated sent-order cost from inventory unit costs.
  */
-export async function fetchSupplierSpendTrend(restaurantId: string): Promise<SupplierSpendTrendPoint[]> {
-  const [orders, recommendationHistory, inventoryItems, restaurant] = await Promise.all([
+export async function fetchSupplierSpendTrend(restaurantId: string): Promise<SupplierSpendTrend> {
+  const [orders, recommendationHistory, inventoryItems, restaurant, purchaseLines] = await Promise.all([
     repository.fetchSupplierOrders(restaurantId),
     repository.fetchRecommendationHistory(restaurantId),
     repository.fetchInventoryItems(restaurantId),
-    repository.fetchRestaurant(restaurantId)
+    repository.fetchRestaurant(restaurantId),
+    repository.fetchPurchaseLines(restaurantId)
   ]);
-  return buildSupplierSpendTrend(restaurantId, orders, recommendationHistory, inventoryItems, {
-    timeZone: restaurant.timezone
+  return resolveSupplierSpendTrend({
+    restaurantId,
+    purchaseLines,
+    orders,
+    recommendations: recommendationHistory,
+    inventoryItems,
+    options: {
+      timeZone: restaurant.timezone,
+      currency: restaurant.currency
+    }
   });
 }
 
