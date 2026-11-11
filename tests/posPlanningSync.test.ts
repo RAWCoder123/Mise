@@ -11,7 +11,7 @@ import { deriveOperationalTodayTasks } from "../services/domain/todayTasks";
 import type { PosIntegration } from "../types/mise";
 
 const migration = readFileSync(
-  "supabase/migrations/20260826140000_pos_planning_sync_state.sql",
+  "supabase/migrations/20261111000000_pos_planning_sync_state.sql",
   "utf8"
 );
 const syncPos = readFileSync("supabase/functions/sync-pos-sales/index.ts", "utf8");
