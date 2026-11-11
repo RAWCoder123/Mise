@@ -82,6 +82,7 @@ import {
   normalizePurchaseLineRow,
   toPurchaseLinePayload
 } from "../domain/purchaseLines";
+import { normalizePurchaseLineItemLinkRow } from "../domain/purchaseLineItemLinks";
 import {
   normalizeAppUser,
   normalizeInsight,
@@ -1627,6 +1628,46 @@ export function createSupabaseRepository(): MiseRepository {
       });
       if (error) throw error;
       return ((data ?? []) as Record<string, unknown>[]).map(normalizePurchaseLineNetRow);
+    },
+
+    async fetchPurchaseLineItemLinks(restaurantId) {
+      const { data, error } = await client
+        .from("purchase_line_item_links")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("linked_at", { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map(normalizePurchaseLineItemLinkRow);
+    },
+
+    async linkPurchaseLineItem(input) {
+      const { data, error } = await client.rpc("link_purchase_line_item", {
+        p_restaurant_id: input.restaurantId,
+        p_normalized_item_key: input.normalizedItemKey,
+        p_inventory_item_id: input.inventoryItemId,
+        p_supplier_id: input.supplierId ?? null
+      });
+      if (error) throw error;
+      return normalizePurchaseLineItemLinkRow(data as Record<string, unknown>);
+    },
+
+    async revokePurchaseLineItemLink(restaurantId, linkId) {
+      const { data, error } = await client.rpc("revoke_purchase_line_item_link", {
+        p_restaurant_id: restaurantId,
+        p_link_id: linkId
+      });
+      if (error) throw error;
+      return normalizePurchaseLineItemLinkRow(data as Record<string, unknown>);
+    },
+
+    async applyPurchaseLineLinkedUnitCost(restaurantId, linkId) {
+      const { data, error } = await client.rpc("apply_purchase_line_linked_unit_cost", {
+        p_restaurant_id: restaurantId,
+        p_link_id: linkId
+      });
+      if (error) throw error;
+      return normalizeInventoryItem(data as InventoryItem);
     },
 
     async replacePendingRecommendations(restaurantId, _inserts) {

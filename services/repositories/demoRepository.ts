@@ -122,6 +122,12 @@ import {
   type PurchaseLineNetByItem,
   type PurchaseLineSource
 } from "../domain/purchaseLines";
+import {
+  PURCHASE_LINE_ITEM_LINK_EVIDENCE_VERSION,
+  requirePurchaseLineItemKey,
+  selectLatestConfirmedUnitPriceForLink,
+  type PurchaseLineItemLink
+} from "../domain/purchaseLineItemLinks";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
 import {
   createDemoSupplier,
@@ -2484,6 +2490,155 @@ export function createLocalDemoRepository(): MiseRepository {
         .sort((left, right) =>
           (left.normalizedItemKey ?? "").localeCompare(right.normalizedItemKey ?? "")
         );
+    },
+
+    async fetchPurchaseLineItemLinks(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return (state.purchaseLineItemLinks ?? []).filter(
+        (link) => link.restaurantId === restaurantId
+      );
+    },
+
+    async linkPurchaseLineItem(input) {
+      return mutateDemoState((state) => {
+        if (!Array.isArray(state.purchaseLineItemLinks)) state.purchaseLineItemLinks = [];
+        const normalizedItemKey = requirePurchaseLineItemKey(input.normalizedItemKey);
+        const supplierId = input.supplierId ?? null;
+        const inventoryItem = state.inventoryItems.find(
+          (item) => item.restaurant_id === input.restaurantId && item.id === input.inventoryItemId
+        );
+        if (!inventoryItem) {
+          throw new Error("Inventory item not found for restaurant");
+        }
+        if (
+          supplierId &&
+          !state.suppliers.some(
+            (supplier) =>
+              supplier.restaurant_id === input.restaurantId && supplier.id === supplierId
+          )
+        ) {
+          throw new Error("Supplier identity is not available for this restaurant.");
+        }
+
+        const existing = state.purchaseLineItemLinks.find(
+          (link) =>
+            link.restaurantId === input.restaurantId &&
+            link.supplierId === supplierId &&
+            link.normalizedItemKey === normalizedItemKey &&
+            link.status === "verified"
+        );
+        if (existing && existing.inventoryItemId === input.inventoryItemId) {
+          return existing;
+        }
+
+        const linkedAt = new Date().toISOString();
+        if (existing) {
+          existing.status = "revoked";
+          existing.revokedBy = DEMO_USER_ID;
+          existing.revokedAt = linkedAt;
+        }
+
+        const link: PurchaseLineItemLink = {
+          id: createId("purchase_line_item_link"),
+          restaurantId: input.restaurantId,
+          supplierId,
+          normalizedItemKey,
+          inventoryItemId: input.inventoryItemId,
+          status: "verified",
+          evidenceVersion: PURCHASE_LINE_ITEM_LINK_EVIDENCE_VERSION,
+          linkedBy: DEMO_USER_ID,
+          linkedAt,
+          revokedBy: null,
+          revokedAt: null
+        };
+        state.purchaseLineItemLinks.push(link);
+        appendDemoAuditLog(state, {
+          restaurant_id: input.restaurantId,
+          action: "purchase_line_item_linked",
+          entity_table: "purchase_line_item_links",
+          entity_id: link.id,
+          metadata: {
+            normalized_item_key: normalizedItemKey,
+            inventory_item_id: input.inventoryItemId,
+            supplier_id: supplierId,
+            replaced_link_id: existing?.id ?? null
+          }
+        });
+        return link;
+      });
+    },
+
+    async revokePurchaseLineItemLink(restaurantId, linkId) {
+      return mutateDemoState((state) => {
+        if (!Array.isArray(state.purchaseLineItemLinks)) state.purchaseLineItemLinks = [];
+        const link = state.purchaseLineItemLinks.find(
+          (candidate) => candidate.restaurantId === restaurantId && candidate.id === linkId
+        );
+        if (!link) throw new Error("Purchase line item link not found");
+        if (link.status === "revoked") return link;
+        link.status = "revoked";
+        link.revokedBy = DEMO_USER_ID;
+        link.revokedAt = new Date().toISOString();
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "purchase_line_item_link_revoked",
+          entity_table: "purchase_line_item_links",
+          entity_id: link.id,
+          metadata: {
+            normalized_item_key: link.normalizedItemKey,
+            inventory_item_id: link.inventoryItemId,
+            supplier_id: link.supplierId
+          }
+        });
+        return link;
+      });
+    },
+
+    async applyPurchaseLineLinkedUnitCost(restaurantId, linkId) {
+      return mutateDemoState((state) => {
+        if (!Array.isArray(state.purchaseLineItemLinks)) state.purchaseLineItemLinks = [];
+        const link = state.purchaseLineItemLinks.find(
+          (candidate) =>
+            candidate.restaurantId === restaurantId &&
+            candidate.id === linkId &&
+            candidate.status === "verified"
+        );
+        if (!link) throw new Error("Verified purchase line item link is required");
+        const itemIndex = state.inventoryItems.findIndex(
+          (item) => item.restaurant_id === restaurantId && item.id === link.inventoryItemId
+        );
+        if (itemIndex < 0) throw new Error("Inventory item not found for restaurant");
+        const priced = selectLatestConfirmedUnitPriceForLink(state.purchaseLines ?? [], link);
+        if (!priced) {
+          throw new Error("No confirmed purchase-line unit price is available for this link");
+        }
+        if (priced.unitPrice < 0 || priced.unitPrice > 1_000_000) {
+          throw new Error("Purchase-line unit price is outside supported limits");
+        }
+        const item = state.inventoryItems[itemIndex]!;
+        if (item.estimated_unit_cost === priced.unitPrice) {
+          return normalizeInventoryItem(item);
+        }
+        const previousCost = item.estimated_unit_cost;
+        item.estimated_unit_cost = priced.unitPrice;
+        item.last_updated = new Date().toISOString();
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "purchase_line_linked_unit_cost_applied",
+          entity_table: "inventory_items",
+          entity_id: item.id,
+          metadata: {
+            link_id: link.id,
+            purchase_line_id: priced.lineId,
+            previous_estimated_unit_cost: previousCost,
+            applied_unit_price: priced.unitPrice,
+            currency: priced.currency,
+            normalized_item_key: link.normalizedItemKey,
+            supplier_id: link.supplierId
+          }
+        });
+        return normalizeInventoryItem(item);
+      });
     },
 
     async fetchPurchaseDecisionPatterns(restaurantId) {
