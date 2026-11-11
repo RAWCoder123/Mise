@@ -54,6 +54,7 @@ import type {
   PurchaseLineNetByItem,
   PurchaseLineSource
 } from "../domain/purchaseLines";
+import type { PurchaseLineItemKeyAlias } from "../domain/purchaseLineItemKeyAliases";
 import type { VerifiedProviderSaleMapping } from "../domain/providerSaleIdentity";
 import {
   PURCHASE_AUTHORITY_BLOCKER_CODES,
@@ -420,6 +421,7 @@ export const RESTAURANT_EXPORT_DATASETS = [
   "purchase_recommendations",
   "purchase_decision_events",
   "purchase_lines",
+  "purchase_line_item_key_aliases",
   "supplier_orders",
   "pos_integrations",
   "sales_imports",
@@ -697,6 +699,17 @@ export interface MiseRepository {
   ): Promise<PurchaseLine>;
   /** Factual nets from recorded lines. Unmatched credits are flagged, not folded in. */
   fetchPurchaseLineNetByItem(restaurantId: string): Promise<PurchaseLineNetByItem[]>;
+  fetchPurchaseLineItemKeyAliases(restaurantId: string): Promise<PurchaseLineItemKeyAlias[]>;
+  aliasPurchaseLineItemKey(input: {
+    restaurantId: string;
+    aliasItemKey: string;
+    canonicalItemKey: string;
+    supplierId?: string | null;
+  }): Promise<PurchaseLineItemKeyAlias>;
+  revokePurchaseLineItemKeyAlias(
+    restaurantId: string,
+    aliasId: string
+  ): Promise<PurchaseLineItemKeyAlias>;
   replacePendingRecommendations(restaurantId: string, inserts: PurchaseRecommendationInput[]): Promise<void>;
   fetchSupplierOrders(restaurantId: string): Promise<SupplierOrder[]>;
   /**

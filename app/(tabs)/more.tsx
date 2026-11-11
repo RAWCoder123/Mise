@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ClipboardList,
   HelpCircle,
+  Link2,
   Mail,
   PackageMinus,
   ScanLine,
@@ -87,6 +88,12 @@ export default function MoreScreen() {
             title={t("more.row.waste.title")}
             icon={<PackageMinus size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
             onPress={() => router.push("/more/waste" as never)}
+          />
+          <OperationalRow
+            density="menu"
+            title={t("more.row.purchaseLineAliases.title")}
+            icon={<Link2 size={icon.emphasis} color={colors.text} strokeWidth={iconStroke} />}
+            onPress={() => router.push("/more/purchase-line-aliases" as never)}
           />
           <OperationalRow
             density="menu"
