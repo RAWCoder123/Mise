@@ -60,3 +60,6 @@ MISE-004A does not use these patterns to generate or modify recommendations.
 It adds no embeddings, vectors, LLM calls, free-form memory, prediction labels,
 or personality language. Historical audits are not backfilled because they
 lack the required canonical and action-time evidence.
+
+Bounded recommendation-quantity influence from established patterns is
+MISE-004B; see `docs/implementation/MISE_004B_PATTERN_ADVISORY_QUANTITY.md`.
