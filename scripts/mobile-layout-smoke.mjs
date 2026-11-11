@@ -18,6 +18,7 @@ const baseRoutes = [
   "/insights",
   "/more",
   "/more/waste",
+  "/more/purchase-line-entry",
   "/more/daily-brief",
   "/ask-mise",
   "/tasks/layout-smoke-task",
