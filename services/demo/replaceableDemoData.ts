@@ -23,6 +23,18 @@ import type { SetupPosSaleDraft } from "../domain/setupDrafts";
 import type { OperationalFindingDecision } from "../domain/operationalFindingDecisions";
 import type { InventoryEvent } from "../domain/inventoryLedger";
 import type { PurchaseDecisionEvent } from "../domain/purchaseDecisionMemory";
+import { fromPurchaseLinesRecorded, type ActivityEvent } from "../domain/activityEvents";
+import {
+  PURCHASE_LINE_EVIDENCE_VERSION,
+  PURCHASE_LINE_NORMALIZATION_VERSION,
+  computePurchaseLineConsistencyFlags,
+  normalizePurchaseLineDescription,
+  resolvePurchaseLineConfidence,
+  type PurchaseLine,
+  type PurchaseLineConfidence,
+  type PurchaseLineSource,
+  type PurchaseLineType
+} from "../domain/purchaseLines";
 import { addDays, toDateKeyInTimeZone } from "../../utils/format";
 import { DEMO_DATASET, type DemoDatasetId } from "./demoDataset";
 import {
@@ -68,7 +80,7 @@ export type StoredOperationalFindingDecision = {
 };
 
 export interface DemoState {
-  schema_version: 13;
+  schema_version: 14;
   restaurants: Restaurant[];
   users: AppUser[];
   /** Durable tenant-scoped supplier identities. Names are presentation only. */
@@ -191,6 +203,242 @@ export const salesBaselines: Record<string, number> = {
   "Egg Drop Soup": 18
 };
 
+/**
+ * Stable MISE-004C seed so demo browse/correction/alias tips have real ledger
+ * rows: confirmed invoice lines, one unverifiable line, and a differently
+ * worded credit that stays unmatched without fuzzy matching.
+ */
+function buildSeededDemoPurchaseLine(input: {
+  id: string;
+  supplierId: string;
+  lineIndex: number;
+  lineType: PurchaseLineType;
+  rawItemDescription: string;
+  quantity: number | null;
+  unitOfMeasure: string | null;
+  unitPrice: number | null;
+  extendedPrice: number | null;
+  currency: string | null;
+  transactionDate: string;
+  receivedDate: string | null;
+  source: PurchaseLineSource;
+  sourceDocumentReference: string;
+  correlationId: string;
+  parseConfidence: PurchaseLineConfidence;
+  recordedAt: string;
+}): PurchaseLine {
+  const normalization = normalizePurchaseLineDescription(input.rawItemDescription);
+  const packSize = normalization.packSize;
+  const consistencyFlags = computePurchaseLineConsistencyFlags({
+    quantity: input.quantity,
+    unitOfMeasure: input.unitOfMeasure,
+    packSize,
+    unitPrice: input.unitPrice,
+    extendedPrice: input.extendedPrice,
+    transactionDate: input.transactionDate,
+    receivedDate: input.receivedDate,
+    statedPackSize: packSize,
+    describedPackSize: packSize
+  });
+  const parseConfidence = resolvePurchaseLineConfidence({
+    requested: input.parseConfidence,
+    quantity: input.quantity,
+    unitOfMeasure: input.unitOfMeasure,
+    unitPrice: input.unitPrice,
+    extendedPrice: input.extendedPrice,
+    normalizedItemKey: normalization.normalizedItemKey,
+    consistencyFlags
+  });
+  return {
+    id: input.id,
+    restaurantId: DEMO_RESTAURANT_ID,
+    supplierId: input.supplierId,
+    lineIndex: input.lineIndex,
+    revision: 0,
+    lineType: input.lineType,
+    rawItemDescription: input.rawItemDescription,
+    normalizedItemKey: normalization.normalizedItemKey,
+    normalizationVersion: PURCHASE_LINE_NORMALIZATION_VERSION,
+    quantity: input.quantity,
+    unitOfMeasure: input.unitOfMeasure,
+    packSize,
+    unitPrice: input.unitPrice,
+    extendedPrice: input.extendedPrice,
+    currency: input.currency,
+    transactionDate: input.transactionDate,
+    receivedDate: input.receivedDate,
+    source: input.source,
+    sourceDocumentReference: input.sourceDocumentReference,
+    correlationId: input.correlationId,
+    parseConfidence,
+    consistencyFlags,
+    signedQuantity:
+      input.quantity === null
+        ? null
+        : input.lineType === "credit"
+          ? -input.quantity
+          : input.quantity,
+    signedExtendedPrice:
+      input.extendedPrice === null
+        ? null
+        : input.lineType === "credit"
+          ? -input.extendedPrice
+          : input.extendedPrice,
+    creditsLineId: null,
+    supersedesLineId: null,
+    evidenceVersion: PURCHASE_LINE_EVIDENCE_VERSION,
+    recordedBy: DEMO_USER_ID,
+    recordedAt: input.recordedAt
+  };
+}
+
+function buildSeededDemoPurchaseLines(input: {
+  supplierId: (displayName: string) => string;
+  transactionDate: string;
+  recordedAt: string;
+}): { purchaseLines: PurchaseLine[]; activityEvents: ActivityEvent[] } {
+  const produceSupplierId = input.supplierId("Local Produce Co.");
+  const poultrySupplierId = input.supplierId("Fresh Poultry Supply");
+  const produceInvoice = "INV-DEMO-1042";
+  const poultryInvoice = "INV-DEMO-1043";
+  const poultryCredit = "CM-DEMO-2201";
+  const produceCorrelation = "00000000-0000-4000-8000-000000000d01";
+  const poultryCorrelation = "00000000-0000-4000-8000-000000000d02";
+  const creditCorrelation = "00000000-0000-4000-8000-000000000d03";
+
+  const purchaseLines = [
+    buildSeededDemoPurchaseLine({
+      id: "00000000-0000-4000-8000-000000000c01",
+      supplierId: produceSupplierId,
+      lineIndex: 0,
+      lineType: "purchase",
+      rawItemDescription: "Tomatoes Vine Ripe",
+      quantity: 20,
+      unitOfMeasure: "lb",
+      unitPrice: 1.85,
+      extendedPrice: 37,
+      currency: "USD",
+      transactionDate: input.transactionDate,
+      receivedDate: input.transactionDate,
+      source: "invoice",
+      sourceDocumentReference: produceInvoice,
+      correlationId: produceCorrelation,
+      parseConfidence: "confirmed",
+      recordedAt: input.recordedAt
+    }),
+    buildSeededDemoPurchaseLine({
+      id: "00000000-0000-4000-8000-000000000c02",
+      supplierId: produceSupplierId,
+      lineIndex: 1,
+      lineType: "purchase",
+      rawItemDescription: "Romaine Lettuce Heads",
+      quantity: 24,
+      unitOfMeasure: "each",
+      unitPrice: 1.35,
+      extendedPrice: 32.4,
+      currency: "USD",
+      transactionDate: input.transactionDate,
+      receivedDate: input.transactionDate,
+      source: "invoice",
+      sourceDocumentReference: produceInvoice,
+      correlationId: produceCorrelation,
+      parseConfidence: "confirmed",
+      recordedAt: input.recordedAt
+    }),
+    buildSeededDemoPurchaseLine({
+      id: "00000000-0000-4000-8000-000000000c03",
+      supplierId: poultrySupplierId,
+      lineIndex: 0,
+      lineType: "purchase",
+      rawItemDescription: "Chicken Breast Boneless 40 LB Case",
+      quantity: 2,
+      unitOfMeasure: "case",
+      unitPrice: 86.5,
+      extendedPrice: 173,
+      currency: "USD",
+      transactionDate: input.transactionDate,
+      receivedDate: input.transactionDate,
+      source: "invoice",
+      sourceDocumentReference: poultryInvoice,
+      correlationId: poultryCorrelation,
+      parseConfidence: "confirmed",
+      recordedAt: input.recordedAt
+    }),
+    buildSeededDemoPurchaseLine({
+      id: "00000000-0000-4000-8000-000000000c04",
+      supplierId: poultrySupplierId,
+      lineIndex: 1,
+      lineType: "purchase",
+      rawItemDescription: "Unlabeled Poultry Trim",
+      quantity: 1,
+      unitOfMeasure: "case",
+      unitPrice: null,
+      extendedPrice: null,
+      currency: null,
+      transactionDate: input.transactionDate,
+      receivedDate: null,
+      source: "invoice",
+      sourceDocumentReference: poultryInvoice,
+      correlationId: poultryCorrelation,
+      parseConfidence: "confirmed",
+      recordedAt: input.recordedAt
+    }),
+    buildSeededDemoPurchaseLine({
+      id: "00000000-0000-4000-8000-000000000c05",
+      supplierId: poultrySupplierId,
+      lineIndex: 0,
+      lineType: "credit",
+      // Different wording on purpose: exact-key netting leaves this unmatched.
+      rawItemDescription: "Boneless Chicken Breast",
+      quantity: 1,
+      unitOfMeasure: "case",
+      unitPrice: 86.5,
+      extendedPrice: 86.5,
+      currency: "USD",
+      transactionDate: input.transactionDate,
+      receivedDate: null,
+      source: "credit_memo",
+      sourceDocumentReference: poultryCredit,
+      correlationId: creditCorrelation,
+      parseConfidence: "confirmed",
+      recordedAt: input.recordedAt
+    })
+  ];
+
+  const poultryActivity = fromPurchaseLinesRecorded({
+    restaurantId: DEMO_RESTAURANT_ID,
+    sourceDocumentReference: poultryInvoice,
+    correlationId: poultryCorrelation,
+    submittedLineCount: 2,
+    recordedLineCount: 2,
+    duplicateLineCount: 0,
+    confirmedCount: 1,
+    estimatedCount: 0,
+    couldNotVerifyCount: 1,
+    occurredAt: input.recordedAt
+  });
+  poultryActivity.id = "00000000-0000-4000-8000-000000000e01";
+
+  const creditActivity = fromPurchaseLinesRecorded({
+    restaurantId: DEMO_RESTAURANT_ID,
+    sourceDocumentReference: poultryCredit,
+    correlationId: creditCorrelation,
+    submittedLineCount: 1,
+    recordedLineCount: 1,
+    duplicateLineCount: 0,
+    confirmedCount: 1,
+    estimatedCount: 0,
+    couldNotVerifyCount: 0,
+    occurredAt: input.recordedAt
+  });
+  creditActivity.id = "00000000-0000-4000-8000-000000000e02";
+
+  return {
+    purchaseLines,
+    activityEvents: [poultryActivity, creditActivity]
+  };
+}
+
 export function createInitialDemoState(
   provider: PosProvider | null = DEMO_DATASET.defaultPosProvider,
   setupProfile?: DemoSetupProfile,
@@ -199,9 +447,15 @@ export function createInitialDemoState(
   const now = nowDate.toISOString();
   const restaurantTimeZone = DEMO_RESTAURANT_TIME_ZONE;
   const today = toDateKeyInTimeZone(nowDate, restaurantTimeZone);
+  const yesterday = toDateKeyInTimeZone(addDays(nowDate, -1), restaurantTimeZone);
   const tomorrow = toDateKeyInTimeZone(addDays(nowDate, 1), restaurantTimeZone);
   const supplierId = (displayName: string) =>
     demoSupplierIdForLegacyName(DEMO_RESTAURANT_ID, displayName);
+  const seededPurchaseLedger = buildSeededDemoPurchaseLines({
+    supplierId,
+    transactionDate: yesterday,
+    recordedAt: now
+  });
 
   const restaurant: Restaurant = {
     id: DEMO_RESTAURANT_ID,
@@ -357,7 +611,7 @@ export function createInitialDemoState(
   ];
 
   const state: DemoState = {
-    schema_version: 13,
+    schema_version: 14,
     restaurants: [restaurant],
     users: [user],
     suppliers: buildDemoSupplierCatalog(
@@ -510,8 +764,8 @@ export function createInitialDemoState(
     ],
     operationalFindingDecisions: [],
     purchaseDecisionEvents: [],
-    purchaseLines: [],
-    activityEvents: [],
+    purchaseLines: seededPurchaseLedger.purchaseLines,
+    activityEvents: seededPurchaseLedger.activityEvents,
     restaurantMemories: [],
     miseActions: [],
     supplierSendContentRevisions: {
@@ -569,6 +823,9 @@ export function createInitialDemoState(
  * Version 12 introduces durable tenant-scoped supplier UUIDs. Exact normalized
  * names are used once to repair legacy state; every subsequent demo workflow
  * groups, selects recipients, and serializes content by supplier_id.
+ * Version 14 seeds the MISE-004C purchase-line ledger (and matching attention
+ * activity) into empty workspaces that never recorded invoice lines. Operator
+ * ingest history is retained whenever purchaseLines already has rows.
  */
 export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   const referenceRestaurantNameMatches =
@@ -731,10 +988,25 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     };
   });
 
+  const upgradingEmptyPurchaseLines =
+    (raw.schema_version == null || raw.schema_version < 14) &&
+    (!Array.isArray(raw.purchaseLines) || raw.purchaseLines.length === 0);
+  const purchaseLines = upgradingEmptyPurchaseLines
+    ? seeded.purchaseLines
+    : Array.isArray(raw.purchaseLines)
+      ? raw.purchaseLines
+      : seeded.purchaseLines;
+  const sourceActivityEvents = Array.isArray(raw.activityEvents)
+    ? raw.activityEvents
+    : seeded.activityEvents;
+  const activityEvents = upgradingEmptyPurchaseLines
+    ? mergeSeededPurchaseLineActivity(sourceActivityEvents, seeded.activityEvents)
+    : sourceActivityEvents;
+
   const state: DemoState = {
     ...seeded,
     ...raw,
-    schema_version: 13,
+    schema_version: 14,
     restaurants,
     users: raw.users ?? seeded.users,
     suppliers,
@@ -755,10 +1027,10 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
     purchaseDecisionEvents: Array.isArray(raw.purchaseDecisionEvents)
       ? raw.purchaseDecisionEvents
       : seeded.purchaseDecisionEvents,
-    purchaseLines: Array.isArray(raw.purchaseLines) ? raw.purchaseLines : seeded.purchaseLines,
+    purchaseLines,
     emailConnections: raw.emailConnections ?? seeded.emailConnections,
     supplierRecipients,
-    activityEvents: Array.isArray(raw.activityEvents) ? raw.activityEvents : seeded.activityEvents,
+    activityEvents,
     restaurantMemories: Array.isArray(raw.restaurantMemories)
       ? raw.restaurantMemories
       : seeded.restaurantMemories,
@@ -809,7 +1081,8 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
   return {
     state,
     migrated:
-      raw.schema_version !== 13 ||
+      raw.schema_version !== 14 ||
+      upgradingEmptyPurchaseLines ||
       !Array.isArray(raw.suppliers) ||
       JSON.stringify(raw.suppliers ?? []) !== JSON.stringify(suppliers) ||
       sourceInventoryItems.some(
@@ -846,8 +1119,31 @@ export function repairDemoState(raw: StoredDemoState): DemoStateRepairResult {
       !Array.isArray(raw.supplierDeliveryItems) ||
       !Array.isArray(raw.restaurantTasks) ||
       !Array.isArray(raw.recalculationRuns) ||
-      !Array.isArray(raw.purchaseDecisionEvents)
+      !Array.isArray(raw.purchaseDecisionEvents) ||
+      !Array.isArray(raw.purchaseLines)
   };
+}
+
+function mergeSeededPurchaseLineActivity(
+  existing: readonly ActivityEvent[],
+  seeded: readonly ActivityEvent[]
+) {
+  const keys = new Set(
+    existing.map((event) => {
+      const key = event.metadata?.idempotencyKey;
+      return typeof key === "string" ? key : event.id;
+    })
+  );
+  const merged = [...existing];
+  for (const event of seeded) {
+    const key = typeof event.metadata?.idempotencyKey === "string"
+      ? event.metadata.idempotencyKey
+      : event.id;
+    if (keys.has(key)) continue;
+    keys.add(key);
+    merged.push(event);
+  }
+  return merged;
 }
 
 function repairDemoSupplierCatalog(
