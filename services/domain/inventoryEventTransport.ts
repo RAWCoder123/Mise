@@ -211,6 +211,9 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "evidence" substring so forged Mise attribution
+  // settles as a terminal outbox reason.
+  if (message.includes("mise attribution")) return "forged_mise_attribution_source";
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
