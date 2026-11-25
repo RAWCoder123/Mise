@@ -126,6 +126,7 @@ test("projects counts, receipts, usage, waste, and corrections in server sequenc
     [count, receipt],
     input({
       eventType: "usage",
+      source: "operator_usage",
       quantity: 400,
       clientEventId: "usage-1",
       idempotencyKey: "usage-1"
