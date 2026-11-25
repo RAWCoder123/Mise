@@ -20,12 +20,15 @@ export async function fetchOperatingBrief(
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
+  // Auxiliary feeds (activity, awaiting decisions, finding decisions) must fail
+  // closed with the brief. Swallowing them as [] hides approvals and invents an
+  // empty "what changed" feed while the hub still looks healthy.
   const [data, orders, activityEvents, miseActions, findingDecisions, ledger] = await Promise.all([
     repository.fetchRestaurantData(normalizedRestaurantId),
     repository.fetchSupplierOrders(normalizedRestaurantId),
-    repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }).catch(() => []),
-    repository.listMiseActions(normalizedRestaurantId, { status: "awaiting_decision", limit: 40 }).catch(() => []),
-    repository.fetchOperationalFindingDecisions(normalizedRestaurantId).catch(() => []),
+    repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }),
+    repository.listMiseActions(normalizedRestaurantId, { status: "awaiting_decision", limit: 40 }),
+    repository.fetchOperationalFindingDecisions(normalizedRestaurantId),
     fetchInventoryLedgerEvidence(normalizedRestaurantId)
   ]);
 

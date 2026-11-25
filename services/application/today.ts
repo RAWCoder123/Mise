@@ -69,7 +69,9 @@ export async function fetchTodaySummary(
     repository.fetchEmailConnectionState(normalizedRestaurantId),
     repository.fetchPosIntegrations(normalizedRestaurantId),
     repository.listRestaurantTasks(normalizedRestaurantId),
-    fetchOpenInventoryCountSession(normalizedRestaurantId).catch(() => null),
+    // Open count session must fail closed. Null-catch would hide an in-progress
+    // count from Home/Today summaries while the hub still looks ready.
+    fetchOpenInventoryCountSession(normalizedRestaurantId),
     fetchInventoryLedgerEvidence(normalizedRestaurantId)
   ]);
 

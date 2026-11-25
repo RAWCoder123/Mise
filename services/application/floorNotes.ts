@@ -240,13 +240,14 @@ function parseTasks(raw: string, restaurantId: string): OperatorTask[] {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return [];
+    throw new Error("operator_task_store_corrupt");
   }
-  if (!Array.isArray(parsed)) return [];
-  return parsed
-    .map((entry) => normalizeTaskRecord(entry, restaurantId))
-    .filter((task): task is OperatorTask => task != null)
-    .sort(
+  if (!Array.isArray(parsed)) throw new Error("operator_task_store_corrupt");
+  const normalized = parsed.map((entry) => normalizeTaskRecord(entry, restaurantId));
+  if (normalized.some((task) => task == null)) {
+    throw new Error("operator_task_store_corrupt");
+  }
+  return (normalized as OperatorTask[]).sort(
       (left, right) =>
         Date.parse(right.createdAt) - Date.parse(left.createdAt) || left.id.localeCompare(right.id)
     );

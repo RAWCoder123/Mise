@@ -42,16 +42,18 @@ export async function fetchDailyOpsReport(restaurantId: string): Promise<DailyOp
     fetchInsights(normalizedRestaurantId),
     fetchLearningMemorySummary(normalizedRestaurantId),
     fetchInsightsSalesTrend(normalizedRestaurantId),
-    fetchInventoryOutlookItems(normalizedRestaurantId).catch(() => []),
-    listOpenOperatorTasks(normalizedRestaurantId).catch(() => []),
-    fetchSupplierReliabilitySummary(normalizedRestaurantId).catch(() => null)
+    // Outlook, floor notes, and reliability must fail closed with the report.
+    // Empty/null catches invent a clean closeout when auxiliary reads fail.
+    fetchInventoryOutlookItems(normalizedRestaurantId),
+    listOpenOperatorTasks(normalizedRestaurantId),
+    fetchSupplierReliabilitySummary(normalizedRestaurantId)
   ]);
 
   const [deliveries, wasteAnalysis] = await Promise.all([
     loadDeliveriesToday(normalizedRestaurantId, summary.operatingDate),
     fetchWasteAnalysis(normalizedRestaurantId, {
       operatingDate: summary.operatingDate
-    }).catch(() => null)
+    })
   ]);
 
   let askBriefingText: string | null = null;
@@ -104,19 +106,15 @@ async function loadDeliveriesToday(
   restaurantId: string,
   operatingDate: string
 ): Promise<DailyOpsDeliveryLine[]> {
-  try {
-    const history = await fetchDeliveryHistory(restaurantId);
-    return history
-      .filter((entry) => entry.effectiveAt.slice(0, 10) === operatingDate)
-      .map((entry) => ({
-        id: entry.id,
-        itemName: entry.itemName,
-        quantity: entry.quantity,
-        unit: entry.canonicalUnit,
-        note: entry.note,
-        at: entry.effectiveAt
-      }));
-  } catch {
-    return [];
-  }
+  const history = await fetchDeliveryHistory(restaurantId);
+  return history
+    .filter((entry) => entry.effectiveAt.slice(0, 10) === operatingDate)
+    .map((entry) => ({
+      id: entry.id,
+      itemName: entry.itemName,
+      quantity: entry.quantity,
+      unit: entry.canonicalUnit,
+      note: entry.note,
+      at: entry.effectiveAt
+    }));
 }
