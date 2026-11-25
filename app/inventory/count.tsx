@@ -98,13 +98,13 @@ export default function InventoryCountSessionScreen() {
     }, [load])
   );
 
-  const visibleDetail = loadedRestaurantId === restaurant?.id ? detail : null;
   const hubLoadState = resolveRestaurantScopedHubLoadState({
     restaurantId: restaurant?.id,
     loadedRestaurantId,
     loadError: Boolean(error)
   });
   const hubReady = hubLoadState === "ready";
+  const visibleDetail = hubReady ? detail : null;
   const actionsEditable = presentRestaurantScopedHubActionsEditable({
     allowed: canDraft,
     hubReady,
@@ -338,7 +338,7 @@ export default function InventoryCountSessionScreen() {
               <Button
                 title={t("inventory.count.startAction")}
                 onPress={() => void startSession()}
-                disabled={!canDraft || saving}
+                disabled={!actionsEditable}
                 fullWidth
                 accessibilityLabel={t("inventory.count.startAccessibility")}
               />

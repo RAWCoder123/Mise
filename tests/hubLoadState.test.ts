@@ -23,7 +23,8 @@ const HUB_CONSUMER_FILES = [
   "app/orders/[id].tsx",
   "app/more/restaurant-memory.tsx",
   "app/more/log-delivery.tsx",
-  "app/more/create-task.tsx"
+  "app/more/create-task.tsx",
+  "app/inventory/count.tsx"
 ];
 
 test("restaurant-scoped hub load state fails closed on soft-refresh errors", () => {
@@ -135,5 +136,15 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
       hubReady: true
     }),
     true
+  );
+});
+
+test("inventory count hides stale session data and blocks start while the hub is not ready", () => {
+  const source = readFileSync("app/inventory/count.tsx", "utf8");
+
+  assert.match(source, /const visibleDetail = hubReady \? detail : null;/);
+  assert.match(
+    source,
+    /title=\{t\("inventory\.count\.startAction"\)\}[\s\S]*disabled=\{!actionsEditable\}/
   );
 });
