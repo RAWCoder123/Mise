@@ -17,11 +17,11 @@ function event(clientEventId: string): InventoryEventInput {
     quantity: 1000,
     canonicalUnit: "g",
     effectiveAt: "2026-07-26T10:00:00.000Z",
-    source: "receiving",
+    source: "operator_receipt",
     sourceReference: "delivery-1",
     reasonCode: null,
     clientEventId,
-    idempotencyKey: `receiving:${clientEventId}`,
+    idempotencyKey: `operator_receipt:${clientEventId}`,
     supersedesEventId: null,
     metadata: {}
   };

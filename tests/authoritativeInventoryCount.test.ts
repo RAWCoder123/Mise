@@ -937,11 +937,14 @@ test("the ledger refuses to append future-dated count evidence", () => {
   assert.equal(current.status, "accepted");
 
   // Non-count evidence keeps its existing behavior; this change is count-scoped.
+  // Use an ordinary operator source — receipts outside {operator_receipt,
+  // supplier_delivery} are rejected by the receipt-source allowlist.
   const futureReceipt = acceptInventoryEvent({
     existingEvents: [],
     candidate: {
       ...base,
       eventType: "receipt",
+      source: "operator_receipt",
       effectiveAt: "2026-08-24T08:00:00.000Z",
       clientEventId: "client-receipt-1",
       idempotencyKey: "idem-receipt-1"
