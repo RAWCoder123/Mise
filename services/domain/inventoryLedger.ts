@@ -167,10 +167,21 @@ export function projectInventoryEvents(
   };
 }
 
+/** Station transfer RPC (`transfer_inventory`, PR #1100) stamps this exact source. */
+export const TRANSFER_INVENTORY_SOURCE = "transfer_inventory" as const;
+
+const ALLOWED_TRANSFER_SOURCES = new Set<string>([TRANSFER_INVENTORY_SOURCE]);
+
 function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
+  // Transfer may only claim the production write-path label. Arbitrary sources still
+  // move on-hand under today's projection and forge Activity / history provenance.
+  // Exact trim match keeps case variants from bypassing the hosted allowlist.
+  if (input.eventType === "transfer" && !ALLOWED_TRANSFER_SOURCES.has(input.source.trim())) {
+    return "unsupported_transfer_source";
+  }
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
   // A physical count observes the present, so it may not be effective in the future.
   // Mirrors the reject_future_dated_inventory_count database trigger.
