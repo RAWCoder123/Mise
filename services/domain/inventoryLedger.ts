@@ -167,10 +167,21 @@ export function projectInventoryEvents(
   };
 }
 
+/** Ad-hoc inventory stockout / Mark stockout stamps this exact source. */
+export const OPERATOR_STOCKOUT_SOURCE = "operator_stockout" as const;
+
+const ALLOWED_STOCKOUT_SOURCES = new Set<string>([OPERATOR_STOCKOUT_SOURCE]);
+
 function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
+  // Stockout may only claim the production write-path label. Arbitrary sources still
+  // zero on-hand and raise inventory-risk Activity under forged provenance.
+  // Exact trim match keeps case variants from bypassing the hosted allowlist.
+  if (input.eventType === "stockout" && !ALLOWED_STOCKOUT_SOURCES.has(input.source.trim())) {
+    return "unsupported_stockout_source";
+  }
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
   // A physical count observes the present, so it may not be effective in the future.
   // Mirrors the reject_future_dated_inventory_count database trigger.
