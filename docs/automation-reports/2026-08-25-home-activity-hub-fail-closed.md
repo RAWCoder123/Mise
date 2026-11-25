@@ -34,3 +34,35 @@ should rebase cleanly under those stacks.
 - `npm run typecheck`
 - Focused: `tests/hubLoadState.test.ts`, `tests/clientTenantSafety.test.ts`,
   `tests/pilotUiSafety.test.ts`
+
+## 2026-11-25 refresh
+
+The branch was merged forward to current `origin/main` (`78da7376`) instead of
+opening another overlapping draft. The refresh also closes two retry-state
+gaps:
+
+- Home invalidates prior readiness and shows blocking load feedback while
+  retrying a failed refresh, so stale one-tap approvals cannot reappear before
+  fresh evidence arrives.
+- Activity History does the same after an initial or soft-refresh failure, so
+  Retry never leaves a blank feed without loading or error feedback.
+
+Fresh verification on the refreshed branch:
+
+- `npm run typecheck`
+- focused hub, tenant-safety, and pilot UI tests: 16 passed
+- one `npm test` run completed with 685 passed, 0 failed, and 0 cancelled
+  before the final query-readiness test was added
+- the final 686-test run completed with 679 passed, 0 failed, and 7 cancelled;
+  isolated reproduction confirms the inherited unref'd recalculation timeout
+  cancels itself and its six sibling tests when the Node event loop drains
+- the recalculation cancellation is already owned by
+  [PR #1183](https://github.com/RAWCoder123/Mise/pull/1183); this branch does
+  not duplicate that separate fix
+- all other test files: 675 passed, 0 failed, 0 cancelled
+- `npm run security:static`
+- `npm run security:backend`
+- `npm run design:static`
+- `npm run qa:routes`
+- `npm run qa:mobile-layout`: 27 routes at 390×844 with zero horizontal
+  overflow

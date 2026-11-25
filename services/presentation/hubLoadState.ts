@@ -29,3 +29,16 @@ export function presentRestaurantScopedHubActionsEditable(input: {
 }): boolean {
   return input.allowed && input.hubReady && !input.busy;
 }
+
+/**
+ * Query-scoped hub data is ready only for the exact query currently selected.
+ * This prevents a filter/range render from briefly presenting the prior
+ * query's results before the replacement request starts.
+ */
+export function isRestaurantScopedHubQueryReady(input: {
+  hubReady: boolean;
+  activeQueryKey: string;
+  loadedQueryKey: string | null;
+}): boolean {
+  return input.hubReady && input.loadedQueryKey === input.activeQueryKey;
+}

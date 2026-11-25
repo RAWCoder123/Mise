@@ -81,6 +81,7 @@ export default function HomeScreen() {
     useState<RecalculationAttentionSummary | null>(null);
   const requestIdRef = useRef(0);
   const hasLoaded = useRef(false);
+  const loadFailedRef = useRef(false);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   const lastSeenSessionRef = useRef<{ restaurantId: string; value: string } | null>(null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -88,6 +89,7 @@ export default function HomeScreen() {
   useEffect(() => {
     requestIdRef.current += 1;
     hasLoaded.current = false;
+    loadFailedRef.current = false;
     setSummary(null);
     setBrief(null);
     setLoadedRestaurantId(null);
@@ -107,8 +109,14 @@ export default function HomeScreen() {
 
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
+    const retryingAfterFailure = loadFailedRef.current;
     setError(null);
-    if (!hasLoaded.current) setLoading(true);
+    if (retryingAfterFailure) {
+      setLoadedRestaurantId(null);
+      setLoading(true);
+    } else if (!hasLoaded.current) {
+      setLoading(true);
+    }
     try {
       let lastSeenAt = lastSeenSessionRef.current?.restaurantId === restaurantId
         ? lastSeenSessionRef.current.value
@@ -143,8 +151,10 @@ export default function HomeScreen() {
       setSummary(nextSummary);
       setBrief(nextBrief);
       setLoadedRestaurantId(restaurantId);
+      loadFailedRef.current = false;
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      loadFailedRef.current = true;
       captureMiseError(loadError, { flow: "home", operation: "load", restaurant_id: restaurantId });
       setError(t("home.error"));
     } finally {

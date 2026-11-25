@@ -45,7 +45,8 @@ test("operational screens reject late requests and render only active-restaurant
   assert.match(screens.home, /presentRestaurantScopedHubActionsEditable/);
   assert.match(screens.home, /disabled=\{!actionsEditable \|\| Boolean\(approvingId\)\}/);
   assert.match(screens.home, /if \(!restaurant \|\| !actionsEditable \|\| approvingId\) return;/);
-  assert.match(screens.activity, /hubReady\s*\?\s*events\s*:\s*\[\]/);
+  assert.match(screens.activity, /isRestaurantScopedHubQueryReady/);
+  assert.match(screens.activity, /queryReady\s*\?\s*events\s*:\s*\[\]/);
   assert.match(screens.today, /hubReady\s*\?\s*summary\s*:\s*null/);
   assert.match(screens.inventory, /hubReady\s*\?\s*outlooks\s*:\s*\[\]/);
   assert.match(screens.insights, /hubReady\s*\?\s*insights\s*:\s*\[\]/);
