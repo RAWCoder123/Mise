@@ -41,6 +41,7 @@ export default function InventoryCountSessionScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
+  const [hubLoadError, setHubLoadError] = useState(false);
   const requestIdRef = useRef(0);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
   activeRestaurantIdRef.current = restaurant?.id ?? null;
@@ -54,6 +55,7 @@ export default function InventoryCountSessionScreen() {
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
+    setHubLoadError(false);
     try {
       const open = await fetchOpenInventoryCountSession(restaurantId);
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
@@ -70,8 +72,10 @@ export default function InventoryCountSessionScreen() {
         Object.fromEntries((open?.lines ?? []).map((line) => [line.inventory_item_id, line.note ?? ""]))
       );
       setLoadedRestaurantId(restaurantId);
+      setHubLoadError(false);
     } catch {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      setHubLoadError(true);
       setError(t("inventory.count.loadError"));
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
@@ -87,6 +91,7 @@ export default function InventoryCountSessionScreen() {
     setDraftCounts({});
     setDraftNotes({});
     setSaving(false);
+    setHubLoadError(false);
     setError(null);
     setNotice(null);
     setLoading(Boolean(restaurant));
@@ -101,7 +106,7 @@ export default function InventoryCountSessionScreen() {
   const hubLoadState = resolveRestaurantScopedHubLoadState({
     restaurantId: restaurant?.id,
     loadedRestaurantId,
-    loadError: Boolean(error)
+    loadError: hubLoadError
   });
   const hubReady = hubLoadState === "ready";
   const visibleDetail = hubReady ? detail : null;
@@ -327,9 +332,10 @@ export default function InventoryCountSessionScreen() {
         ) : null}
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
-        {!visibleDetail ||
-        visibleDetail.session.status === "approved" ||
-        visibleDetail.session.status === "cancelled" ? (
+        {hubReady &&
+        (!visibleDetail ||
+          visibleDetail.session.status === "approved" ||
+          visibleDetail.session.status === "cancelled") ? (
           <MotionView distance={3} duration={240}>
             <SectionSurface
               title={t("inventory.count.startTitle")}
@@ -354,7 +360,7 @@ export default function InventoryCountSessionScreen() {
               />
             </SectionSurface>
           </MotionView>
-        ) : (
+        ) : hubReady && visibleDetail ? (
           <>
             <MotionView distance={3} duration={240}>
               <SectionSurface title={t("inventory.count.progressTitle")} subtitle={statusLabel}>
@@ -498,7 +504,7 @@ export default function InventoryCountSessionScreen() {
               ) : null}
             </View>
           </>
-        )}
+        ) : null}
       </View>
     </Screen>
   );

@@ -142,9 +142,13 @@ test("restaurant-scoped hub actions stay non-editable until the hub is ready", (
 test("inventory count hides stale session data and blocks start while the hub is not ready", () => {
   const source = readFileSync("app/inventory/count.tsx", "utf8");
 
+  assert.match(source, /const \[hubLoadError, setHubLoadError\] = useState\(false\);/);
+  assert.match(source, /loadError: hubLoadError/);
+  assert.doesNotMatch(source, /loadError: Boolean\(error\)/);
   assert.match(source, /const visibleDetail = hubReady \? detail : null;/);
+  assert.match(source, /\{hubReady &&[\s\n]*\(\s*!visibleDetail/);
   assert.match(
     source,
-    /title=\{t\("inventory\.count\.startAction"\)\}[\s\S]*disabled=\{!actionsEditable\}/
+    /title=\{t\("inventory\.count\.startAction"\)\}[\s\n]+onPress=\{\(\) => void startSession\(\)\}[\s\n]+disabled=\{!actionsEditable\}/
   );
 });

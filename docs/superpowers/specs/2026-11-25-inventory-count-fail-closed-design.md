@@ -27,16 +27,26 @@ and makes an unavailable action appear interactive.
 
 ## Design
 
-`app/inventory/count.tsx` will calculate `hubLoadState` and `hubReady` before
-deriving `visibleDetail`. `visibleDetail` will be `detail` only when
-`hubReady` is true. A load error will therefore show the existing retry notice
-without stale session lines, progress, or approval controls.
+`app/inventory/count.tsx` will track hub refresh failures in a dedicated
+`hubLoadError` boolean, following the same pattern as `app/settings/recipes.tsx`.
+`resolveRestaurantScopedHubLoadState` receives `loadError: hubLoadError`, not
+`Boolean(error)`, because `error` also carries validation and mutation messages
+that must not change hub readiness.
 
-The existing start-session surface remains the screen's no-detail fallback,
-but its button will use `actionsEditable` so it is visibly disabled during
-loading, errors, insufficient permission, and mutations. Successful loads with
-no open session and successful loads with a current session retain their
-existing behavior.
+The screen will calculate `hubLoadState` and `hubReady` before deriving
+`visibleDetail`. `visibleDetail` will be `detail` only when `hubReady` is
+true. A soft-refresh load error will show the existing retry notice without
+stale session lines, progress, or approval controls, and cached `detail` and
+draft values are preserved in state rather than cleared in the load handler.
+
+The start / no-session panel renders only when `hubReady` is true and there is
+no active count surface to show (no open session, or approved/cancelled). During
+a genuine load error the panel is hidden so the screen does not imply there is
+no current count; the retry notice may be the only content below the screen
+chrome. The start button uses `actionsEditable` so it is visibly disabled
+during loading, hub load errors, insufficient permission, and mutations.
+Mutation and validation errors keep `hubReady` true so an in-progress session
+sheet remains visible while the operator corrects input.
 
 No service API, repository, domain rule, schema, localization copy, or
 dependency changes are required.

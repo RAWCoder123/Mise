@@ -35,10 +35,14 @@ Add `"app/inventory/count.tsx"` to `HUB_CONSUMER_FILES`, then add:
 test("inventory count hides stale session data and blocks start while the hub is not ready", () => {
   const source = readFileSync("app/inventory/count.tsx", "utf8");
 
+  assert.match(source, /const \[hubLoadError, setHubLoadError\] = useState\(false\);/);
+  assert.match(source, /loadError: hubLoadError/);
+  assert.doesNotMatch(source, /loadError: Boolean\(error\)/);
   assert.match(source, /const visibleDetail = hubReady \? detail : null;/);
+  assert.match(source, /\{hubReady &&[\s\n]*\(\s*!visibleDetail/);
   assert.match(
     source,
-    /title=\{t\("inventory\.count\.startAction"\)\}[\s\S]*disabled=\{!actionsEditable\}/
+    /title=\{t\("inventory\.count\.startAction"\)\}[\s\n]+onPress=\{\(\) => void startSession\(\)\}[\s\n]+disabled=\{!actionsEditable\}/
   );
 });
 ```
@@ -57,13 +61,19 @@ because the screen still derives `visibleDetail` from `loadedRestaurantId`.
 
 - [ ] **Step 3: Gate detail and the start button with shared readiness**
 
-In `app/inventory/count.tsx`, derive hub state before visible detail:
+In `app/inventory/count.tsx`, add `hubLoadError` state (reset on restaurant
+change and at load start, clear on successful load, set true only in the load
+`catch`), pass `loadError: hubLoadError` to the helper, and derive hub state
+before visible detail:
 
 ```ts
+const [hubLoadError, setHubLoadError] = useState(false);
+// in load(): setHubLoadError(false) at start; setHubLoadError(false) on success;
+// in load() catch: setHubLoadError(true) only (do not clear cached detail/drafts)
 const hubLoadState = resolveRestaurantScopedHubLoadState({
   restaurantId: restaurant?.id,
   loadedRestaurantId,
-  loadError: Boolean(error)
+  loadError: hubLoadError
 });
 const hubReady = hubLoadState === "ready";
 const visibleDetail = hubReady ? detail : null;
@@ -74,16 +84,22 @@ const actionsEditable = presentRestaurantScopedHubActionsEditable({
 });
 ```
 
-Change the start button to:
+Gate the start / no-session panel with `hubReady` and change the start button to:
 
 ```tsx
-<Button
-  title={t("inventory.count.startAction")}
-  onPress={() => void startSession()}
-  disabled={!actionsEditable}
-  fullWidth
-  accessibilityLabel={t("inventory.count.startAccessibility")}
-/>
+{hubReady &&
+(!visibleDetail ||
+  visibleDetail.session.status === "approved" ||
+  visibleDetail.session.status === "cancelled") ? (
+  ...
+  <Button
+    title={t("inventory.count.startAction")}
+    onPress={() => void startSession()}
+    disabled={!actionsEditable}
+    fullWidth
+    accessibilityLabel={t("inventory.count.startAccessibility")}
+  />
+)}
 ```
 
 - [ ] **Step 4: Run the focused test and verify it passes**
