@@ -211,6 +211,14 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "evidence" substring so stockout reason failures settle
+  // as terminal outbox reasons instead of incomplete_evidence.
+  if (message.includes("stockout events require a reason code")) {
+    return "stockout_requires_reason";
+  }
+  if (message.includes("stockout reason code is not allowed")) {
+    return "invalid_stockout_reason";
+  }
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
