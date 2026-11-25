@@ -13,7 +13,7 @@ const receiptInput: InventoryEventInput = {
   quantity: 2500,
   canonicalUnit: "g",
   effectiveAt: "2026-08-01T09:00:00.000Z",
-  source: "receiving",
+  source: "operator_receipt",
   sourceReference: null,
   reasonCode: null,
   clientEventId: "client-receipt-1",

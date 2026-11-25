@@ -167,10 +167,28 @@ export function projectInventoryEvents(
   };
 }
 
+/** Ad-hoc Log Delivery / inventory receive stamps this exact source. */
+export const OPERATOR_RECEIPT_SOURCE = "operator_receipt" as const;
+
+/** Order-path Mark received / record_supplier_delivery stamps this exact source. */
+export const SUPPLIER_DELIVERY_RECEIPT_SOURCE = "supplier_delivery" as const;
+
+const ALLOWED_RECEIPT_SOURCES = new Set<string>([
+  OPERATOR_RECEIPT_SOURCE,
+  SUPPLIER_DELIVERY_RECEIPT_SOURCE
+]);
+
 function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
+  // Receipts may only claim the two production write-path labels. Arbitrary
+  // sources dodge double-count guards that key on operator_receipt, forge
+  // delivery-history badges, and still move on-hand. Exact trim match keeps
+  // case variants from bypassing supplier_delivery provenance checks.
+  if (input.eventType === "receipt" && !ALLOWED_RECEIPT_SOURCES.has(input.source.trim())) {
+    return "unsupported_receipt_source";
+  }
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
   // A physical count observes the present, so it may not be effective in the future.
   // Mirrors the reject_future_dated_inventory_count database trigger.

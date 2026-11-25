@@ -211,6 +211,9 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "event type" / "evidence" substrings so an
+  // unsupported receipt source settles as a terminal outbox reason.
+  if (message.includes("receipt source")) return "unsupported_receipt_source";
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";

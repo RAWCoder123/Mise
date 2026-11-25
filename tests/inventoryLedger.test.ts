@@ -16,11 +16,11 @@ function input(overrides: Partial<InventoryEventInput> = {}): InventoryEventInpu
     quantity: 1000,
     canonicalUnit: "g",
     effectiveAt: "2026-07-26T10:00:00.000Z",
-    source: "receiving",
+    source: "operator_receipt",
     sourceReference: "delivery-1",
     reasonCode: null,
     clientEventId: "device-event-1",
-    idempotencyKey: "receiving:delivery-1:chicken",
+    idempotencyKey: "operator_receipt:delivery-1:chicken",
     supersedesEventId: null,
     metadata: {},
     ...overrides
