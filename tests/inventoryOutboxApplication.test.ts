@@ -202,6 +202,12 @@ test("authentication and session failures remain retryable instead of terminal r
     {
       label: "session-expired",
       error: new Error("invalid or expired user session")
+    },
+    {
+      label: "missing-session-grant-level",
+      error: Object.assign(new Error("permission denied for function record_inventory_event"), {
+        code: "42501"
+      })
     }
   ] as const) {
     const repository = createInventoryOutboxRepository(memoryStorage());

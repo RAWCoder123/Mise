@@ -26,6 +26,7 @@ function isInventoryOutboxRetryableAuthenticationError(error: unknown) {
   if (authorizationStatusFromError(error) === 401) return true;
   if (code === "PGRST301" || code === "PGRST303") return true;
   if (/not authenticated|invalid or expired user session/i.test(message)) return true;
+  if (/permission denied for (function|table|schema|sequence)\b/i.test(message)) return true;
   return false;
 }
 
