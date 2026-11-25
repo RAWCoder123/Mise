@@ -20,14 +20,17 @@ export async function fetchOperatingBrief(
   const normalizedRestaurantId = restaurantId.trim();
   if (!normalizedRestaurantId) throw new Error("Missing restaurant workspace.");
 
-  const [data, orders, activityEvents, miseActions, findingDecisions, ledger] = await Promise.all([
-    repository.fetchRestaurantData(normalizedRestaurantId),
-    repository.fetchSupplierOrders(normalizedRestaurantId),
-    repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }).catch(() => []),
-    repository.listMiseActions(normalizedRestaurantId, { status: "awaiting_decision", limit: 40 }).catch(() => []),
-    repository.fetchOperationalFindingDecisions(normalizedRestaurantId).catch(() => []),
-    fetchInventoryLedgerEvidence(normalizedRestaurantId)
-  ]);
+  const [data, orders, activityEvents, miseActions, findingDecisions, ledger, purchaseLineNets] =
+    await Promise.all([
+      repository.fetchRestaurantData(normalizedRestaurantId),
+      repository.fetchSupplierOrders(normalizedRestaurantId),
+      repository.listActivityEvents(normalizedRestaurantId, { limit: 80 }).catch(() => []),
+      repository.listMiseActions(normalizedRestaurantId, { status: "awaiting_decision", limit: 40 }).catch(() => []),
+      repository.fetchOperationalFindingDecisions(normalizedRestaurantId).catch(() => []),
+      fetchInventoryLedgerEvidence(normalizedRestaurantId),
+      // Fail closed to unknown: a failed net read must not invent “no unmatched credits.”
+      repository.fetchPurchaseLineNetByItem(normalizedRestaurantId).catch(() => null)
+    ]);
 
   if (data.restaurant.id !== normalizedRestaurantId) {
     throw new Error("Operating brief failed restaurant scope validation.");
@@ -63,7 +66,8 @@ export async function fetchOperatingBrief(
     insights: data.insights,
     decisions: findingDecisions,
     inventoryLedgerEvents: ledger.events,
-    ledgerComplete: ledger.complete
+    ledgerComplete: ledger.complete,
+    ...(purchaseLineNets ? { purchaseLineNets } : {})
   }).findings;
 
   return buildOperatingBrief({
