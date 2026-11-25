@@ -36,6 +36,7 @@ test("in-memory inventory event recorder lists accepted events", async () => {
     clientEventId: "client-waste-1",
     idempotencyKey: "inventory:client-waste-1",
     quantity: 100,
+    reasonCode: "spoilage",
     metadata: {}
   });
 
