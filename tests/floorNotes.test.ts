@@ -192,6 +192,26 @@ test("reopenOperatorTask restores a completed task to open", async () => {
   }
 });
 
+test("operator task reads fail closed when stored data is corrupt", async () => {
+  for (const raw of [
+    "{",
+    JSON.stringify({ id: "not-an-array" }),
+    JSON.stringify([{ id: "missing-required-fields" }])
+  ]) {
+    const restore = setFloorNoteStorageForTesting(
+      memoryStorage({ "mise.operator-tasks.v1:restaurant-a": raw })
+    );
+    try {
+      await assert.rejects(
+        () => listOpenOperatorTasks("restaurant-a"),
+        { message: "operator_task_store_corrupt" }
+      );
+    } finally {
+      restore();
+    }
+  }
+});
+
 test("migrates legacy floor-notes storage into operator-tasks v1", async () => {
   const legacyNote = {
     id: "floor_note_legacy",
