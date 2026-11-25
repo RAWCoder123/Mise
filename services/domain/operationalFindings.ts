@@ -13,6 +13,7 @@ import {
   buildInventoryCountEvidence,
   type LedgerProjectionEvent
 } from "./inventoryCountAuthority";
+import type { PurchaseLineNetByItem } from "./purchaseLines";
 import { saleMatchesRecipe, type VerifiedProviderSaleMapping } from "./providerSaleIdentity";
 
 export const BETA_FINDING_POLICY_VERSION = "beta-findings-v1";
@@ -111,6 +112,12 @@ export interface DailyOperationalBriefInput {
   inventoryLedgerEvents?: readonly LedgerProjectionEvent[];
   /** False when the caller's bounded ledger read was truncated. */
   ledgerComplete?: boolean;
+  /**
+   * Restaurant-scoped purchase-line nets from `list_purchase_line_net_by_item`.
+   * Omit or pass [] when the read failed — unknown must not invent “no unmatched
+   * credits.” Callers must already scope the rows to `restaurantId`.
+   */
+  purchaseLineNets?: readonly PurchaseLineNetByItem[];
 }
 
 function boundedText(value: string, fallback: string, max = 240) {
@@ -432,6 +439,71 @@ export function buildDailyOperationalBrief(input: DailyOperationalBriefInput): D
         evidence[evidence.length - 1]?.observedAt ?? generatedAt,
         generatedAt,
         missingNames.map((name) => `menu_mapping:${name}`)
+      ),
+      managerFeedback: unreviewedFeedback(recommendedAction),
+      policyVersion: BETA_FINDING_POLICY_VERSION
+    });
+  }
+
+  const unmatchedCreditNets = [...(input.purchaseLineNets ?? [])]
+    .filter((net) => net.unmatchedCredit)
+    .sort((left, right) =>
+      (left.lastTransactionDate ?? "").localeCompare(right.lastTransactionDate ?? "") ||
+      (left.normalizedItemKey ?? "").localeCompare(right.normalizedItemKey ?? "") ||
+      (left.supplierId ?? "").localeCompare(right.supplierId ?? "") ||
+      (left.unitOfMeasure ?? "").localeCompare(right.unitOfMeasure ?? "") ||
+      (left.currency ?? "").localeCompare(right.currency ?? "")
+    );
+  if (unmatchedCreditNets.length > 0) {
+    const evidence = unmatchedCreditNets.slice(0, MAX_EVIDENCE_PER_FINDING).map((net) => {
+      const itemKey = boundedText(net.normalizedItemKey ?? "unlabeled item", "unlabeled item", 80);
+      const unit = boundedText(net.unitOfMeasure ?? "unit", "unit", 40);
+      const currency = boundedText(net.currency ?? "amount", "amount", 12);
+      const creditCount = net.creditLineCount;
+      const observedAt = finiteTimestamp(
+        net.lastTransactionDate ? `${net.lastTransactionDate}T00:00:00.000Z` : null,
+        generatedAt
+      );
+      return {
+        type: "data_gap" as const,
+        id: [
+          "purchase-line-net",
+          net.supplierId ?? "no-supplier",
+          net.normalizedItemKey ?? "no-key",
+          net.unitOfMeasure ?? "no-unit",
+          net.currency ?? "no-currency"
+        ].join(":"),
+        observedAt,
+        summary: boundedText(
+          `${itemKey}: ${creditCount} unmatched credit${creditCount === 1 ? "" : "s"} (${unit}, ${currency}) with no matching purchase line`,
+          "Unmatched invoice credit"
+        )
+      };
+    });
+    const recommendedAction =
+      "Compare each credit memo’s item wording to purchase lines for the same supplier, unit, and currency. Mise only nets exact item-key agreement.";
+    findings.push({
+      id: `finding:purchase-line:unmatched-credit:${restaurantId}`,
+      restaurantId,
+      category: "cost",
+      severity: "warning",
+      priority: "up_next",
+      title: "Review unmatched invoice credits",
+      explanation: `${unmatchedCreditNets.length} invoice credit group${
+        unmatchedCreditNets.length === 1 ? "" : "s"
+      } have no matching purchase line under the same supplier, unit, and currency, so net spend for those items stays unnetted.`,
+      confidence: boundedConfidence(
+        1,
+        "Restaurant-scoped purchase-line nets mark credits with no purchase behind them as unmatched."
+      ),
+      evidence,
+      affectedWorkflow: "purchase_line_credit_matching",
+      recommendedAction,
+      sourceWindow: sourceWindow(evidence, generatedAt),
+      generatedAt,
+      freshness: freshnessFor(
+        evidence[evidence.length - 1]?.observedAt ?? generatedAt,
+        generatedAt
       ),
       managerFeedback: unreviewedFeedback(recommendedAction),
       policyVersion: BETA_FINDING_POLICY_VERSION

@@ -311,16 +311,80 @@ test("same-day data-gap feedback survives a brief refresh and expires with new e
   );
 });
 
+test("unmatched invoice credits become an Up next cost finding without inventing a match", () => {
+  const brief = build({
+    purchaseLineNets: [
+      {
+        supplierId,
+        normalizedItemKey: "saffron threads",
+        unitOfMeasure: "each",
+        currency: "USD",
+        purchaseLineCount: 0,
+        creditLineCount: 1,
+        netQuantity: -1,
+        netExtendedPrice: -41,
+        unmatchedCredit: true,
+        firstTransactionDate: "2026-09-03",
+        lastTransactionDate: "2026-09-03"
+      },
+      {
+        supplierId,
+        normalizedItemKey: "chicken thighs boneless case",
+        unitOfMeasure: "case",
+        currency: "USD",
+        purchaseLineCount: 2,
+        creditLineCount: 1,
+        netQuantity: 1,
+        netExtendedPrice: 86.5,
+        unmatchedCredit: false,
+        firstTransactionDate: "2026-09-01",
+        lastTransactionDate: "2026-09-03"
+      }
+    ]
+  });
+
+  const finding = brief.findings.find(
+    (entry) => entry.id === `finding:purchase-line:unmatched-credit:${restaurantId}`
+  );
+  assert.ok(finding);
+  assert.equal(finding.category, "cost");
+  assert.equal(finding.severity, "warning");
+  assert.equal(finding.priority, "up_next");
+  assert.equal(finding.affectedWorkflow, "purchase_line_credit_matching");
+  assert.equal(finding.evidence.length, 1);
+  assert.match(finding.evidence[0]?.summary ?? "", /saffron threads/i);
+  assert.doesNotMatch(finding.evidence[0]?.summary ?? "", /chicken/i);
+  assert.match(finding.recommendedAction, /exact item-key agreement/i);
+  assert.ok(brief.priorities.upNext.includes(finding.id));
+});
+
+test("omitted purchase-line nets do not invent an unmatched-credit finding", () => {
+  const withoutNets = build();
+  const withEmptyNets = build({ purchaseLineNets: [] });
+  assert.equal(
+    withoutNets.findings.some((entry) => entry.id.includes("unmatched-credit")),
+    false
+  );
+  assert.equal(
+    withEmptyNets.findings.some((entry) => entry.id.includes("unmatched-credit")),
+    false
+  );
+});
+
 test("screen-facing daily brief stays behind miseService and has no AI or mutation dependency", () => {
   const facade = readFileSync("services/miseService.ts", "utf8");
   const application = readFileSync("services/application/findings.ts", "utf8");
+  const operatingBrief = readFileSync("services/application/operatingBrief.ts", "utf8");
   const domain = readFileSync("services/domain/operationalFindings.ts", "utf8");
 
   assert.match(facade, /export \* from "\.\/application\/findings"/);
   assert.match(application, /repository\.fetchRestaurantData/);
   assert.match(application, /repository\.fetchOperationalFindingDecisions/);
+  assert.match(application, /repository\.fetchPurchaseLineNetByItem/);
+  assert.match(operatingBrief, /repository\.fetchPurchaseLineNetByItem/);
   assert.match(application, /toDateKeyInTimeZone/);
   assert.doesNotMatch(application, /fetchPlanningData/);
   assert.doesNotMatch(application, /create|insert|update|delete|sendSupplier/i);
   assert.doesNotMatch(domain, /services\/ai|openai|generate-ai/i);
+  assert.doesNotMatch(domain, /fuzzy|embed|cluster|stem/i);
 });
