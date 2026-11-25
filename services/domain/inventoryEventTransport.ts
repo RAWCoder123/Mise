@@ -215,5 +215,7 @@ function rejectionReason(message: string) {
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
   if (message.includes("evidence")) return "incomplete_evidence";
+  // unsupported correction source settles as a terminal outbox reason.
+  if (message.includes("correction source")) return "unsupported_correction_source";
   return "invalid_inventory_event";
 }
