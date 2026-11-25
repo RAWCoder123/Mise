@@ -167,10 +167,20 @@ export function projectInventoryEvents(
   };
 }
 
+/** Waste/receipt correction writers (#345/#350) stamp this exact source. */
+export const OPERATOR_CORRECTION_SOURCE = "operator_correction" as const;
+
+const ALLOWED_CORRECTION_SOURCES = new Set<string>([OPERATOR_CORRECTION_SOURCE]);
+
 function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
+  // Correction may only claim the production write-path label. Arbitrary sources still
+  // move on-hand under today's projection and forge Activity / history provenance.
+  if (input.eventType === "correction" && !ALLOWED_CORRECTION_SOURCES.has(input.source.trim())) {
+    return "unsupported_correction_source";
+  }
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
   // A physical count observes the present, so it may not be effective in the future.
   // Mirrors the reject_future_dated_inventory_count database trigger.
