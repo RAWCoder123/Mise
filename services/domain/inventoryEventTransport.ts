@@ -211,6 +211,11 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "evidence" substring so forged count-session
+  // provenance settles as a terminal outbox reason.
+  if (message.includes("count-session provenance")) {
+    return "forged_approve_count_session_source";
+  }
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
