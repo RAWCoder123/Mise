@@ -6,6 +6,14 @@ function source(path: string) {
   return readFileSync(path, "utf8");
 }
 
+function sourceBetween(value: string, start: string, end: string) {
+  const startIndex = value.indexOf(start);
+  assert.notEqual(startIndex, -1, `missing source marker: ${start}`);
+  const endIndex = value.indexOf(end, startIndex + start.length);
+  assert.notEqual(endIndex, -1, `missing source marker: ${end}`);
+  return value.slice(startIndex, endIndex);
+}
+
 test("operational screens reject late requests and render only active-restaurant data", () => {
   const screens = {
     today: source("app/(tabs)/today.tsx"),
@@ -130,6 +138,66 @@ test("repository permission failures trigger live membership revalidation", () =
   assert.match(events, /status === 401/);
   assert.match(events, /status === 403/);
   assert.match(events, /notifyTenantAuthorizationDenied/);
+});
+
+test("core restaurant bundles report authorization failures to live membership revalidation", () => {
+  const repository = source("services/repositories/supabaseRepository.ts");
+  const planningSales = sourceBetween(
+    repository,
+    "async function fetchBoundedPlanningSales",
+    "async function fetchVerifiedProviderMappings"
+  );
+  const providerMappings = sourceBetween(
+    repository,
+    "async function fetchVerifiedProviderMappings",
+    "async function loadRestaurantTaskDependencyIds"
+  );
+  const operationsProfile = sourceBetween(
+    repository,
+    "async fetchRestaurantOpsProfile",
+    "async fetchPosIntegrations"
+  );
+  const restaurantData = sourceBetween(
+    repository,
+    "async fetchRestaurantData",
+    "async recordOperationalFindingDecision"
+  );
+  const planningData = sourceBetween(
+    repository,
+    "async fetchPlanningData",
+    "async fetchVerifiedProviderMappings(restaurantId) {"
+  );
+
+  assert.match(planningSales, /if \(error\) throwRepositoryError\(error, restaurantId\)/);
+  assert.match(providerMappings, /if \(error\) throwRepositoryError\(error, restaurantId\)/);
+
+  for (const [name, bundle, resultNames] of [
+    [
+      "restaurant operations profile",
+      operationsProfile,
+      ["restaurantResult", "posResult", "supplierResult", "aiResult"]
+    ],
+    [
+      "restaurant data",
+      restaurantData,
+      ["restaurantResult", "inventoryResult", "recommendationsResult", "insightsResult", "mappingResult"]
+    ],
+    [
+      "planning data",
+      planningData,
+      ["inventoryResult", "mappingResult", "restaurantResult"]
+    ]
+  ] as const) {
+    for (const resultName of resultNames) {
+      assert.match(
+        bundle,
+        new RegExp(
+          `if \\(${resultName}\\.error\\) throwRepositoryError\\(${resultName}\\.error, restaurantId\\)`
+        ),
+        `${name} must notify on ${resultName} authorization failures`
+      );
+    }
+  }
 });
 
 test("manual tab controls expose their selected state on web", () => {

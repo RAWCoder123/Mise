@@ -738,7 +738,7 @@ export function createSupabaseRepository(): MiseRepository {
       p_restaurant_id: restaurantId,
       p_service_days: 28
     });
-    if (error) throw error;
+    if (error) throwRepositoryError(error, restaurantId);
     return ((data ?? []) as PosSale[]).map(normalizePosSale);
   }
 
@@ -761,7 +761,7 @@ export function createSupabaseRepository(): MiseRepository {
         menu_items!inner(active)
       `)
       .eq("restaurant_id", restaurantId);
-    if (error) throw error;
+    if (error) throwRepositoryError(error, restaurantId);
     const nowIso = new Date().toISOString();
     return ((data ?? []) as Array<{
       restaurant_id: string;
@@ -1023,10 +1023,10 @@ export function createSupabaseRepository(): MiseRepository {
           .order("created_at", { ascending: false })
           .limit(5)
       ]);
-      if (restaurantResult.error) throw restaurantResult.error;
-      if (posResult.error) throw posResult.error;
-      if (supplierResult.error) throw supplierResult.error;
-      if (aiResult.error) throw aiResult.error;
+      if (restaurantResult.error) throwRepositoryError(restaurantResult.error, restaurantId);
+      if (posResult.error) throwRepositoryError(posResult.error, restaurantId);
+      if (supplierResult.error) throwRepositoryError(supplierResult.error, restaurantId);
+      if (aiResult.error) throwRepositoryError(aiResult.error, restaurantId);
       return {
         restaurant: normalizeRestaurant(restaurantResult.data as Restaurant),
         posIntegrations: ((posResult.data ?? []) as PosIntegration[]).map(normalizePosIntegration),
@@ -1091,11 +1091,11 @@ export function createSupabaseRepository(): MiseRepository {
           client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId)
         ]);
 
-      if (restaurantResult.error) throw restaurantResult.error;
-      if (inventoryResult.error) throw inventoryResult.error;
-      if (recommendationsResult.error) throw recommendationsResult.error;
-      if (insightsResult.error) throw insightsResult.error;
-      if (mappingResult.error) throw mappingResult.error;
+      if (restaurantResult.error) throwRepositoryError(restaurantResult.error, restaurantId);
+      if (inventoryResult.error) throwRepositoryError(inventoryResult.error, restaurantId);
+      if (recommendationsResult.error) throwRepositoryError(recommendationsResult.error, restaurantId);
+      if (insightsResult.error) throwRepositoryError(insightsResult.error, restaurantId);
+      if (mappingResult.error) throwRepositoryError(mappingResult.error, restaurantId);
       const providerMappings = await fetchVerifiedProviderMappings(restaurantId);
 
       return normalizeRestaurantData(
@@ -1292,9 +1292,9 @@ export function createSupabaseRepository(): MiseRepository {
         client.from("menu_item_ingredients").select("*").eq("restaurant_id", restaurantId),
         client.from("restaurants").select("timezone").eq("id", restaurantId).single()
       ]);
-      if (inventoryResult.error) throw inventoryResult.error;
-      if (mappingResult.error) throw mappingResult.error;
-      if (restaurantResult.error) throw restaurantResult.error;
+      if (inventoryResult.error) throwRepositoryError(inventoryResult.error, restaurantId);
+      if (mappingResult.error) throwRepositoryError(mappingResult.error, restaurantId);
+      if (restaurantResult.error) throwRepositoryError(restaurantResult.error, restaurantId);
       const timeZone = (restaurantResult.data as Pick<Restaurant, "timezone">).timezone;
       const providerMappings = await fetchVerifiedProviderMappings(restaurantId);
       return {
