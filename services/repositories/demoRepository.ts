@@ -947,6 +947,25 @@ export function createLocalDemoRepository(): MiseRepository {
       });
       if (acceptance.status !== "accepted") return acceptance;
 
+      // Mirrors private.reject_forged_supplier_delivery_receipt_source: a receipt
+      // that claims order-path provenance must name a same-tenant delivery row.
+      if (
+        input.eventType === "receipt" &&
+        input.source.trim() === "supplier_delivery"
+      ) {
+        const deliveryId = input.sourceReference?.trim() ?? "";
+        const deliveryExists = (state.supplierDeliveries ?? []).some(
+          (delivery) =>
+            delivery.restaurant_id === input.restaurantId && delivery.id === deliveryId
+        );
+        if (!deliveryExists) {
+          return {
+            status: "rejected" as const,
+            reason: "invalid_supplier_delivery_reference"
+          };
+        }
+      }
+
       // Mirrors private.stamp_inventory_event_projection_applied: a row effective at
       // or before the item's authoritative count is retained in history but must not
       // move the on-hand projection again.

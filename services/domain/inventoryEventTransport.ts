@@ -211,6 +211,9 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "evidence" / "quantity" substrings so forged
+  // supplier_delivery provenance settles as a terminal outbox reason.
+  if (message.includes("supplier delivery")) return "invalid_supplier_delivery_reference";
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
