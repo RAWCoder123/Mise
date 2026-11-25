@@ -21,6 +21,10 @@ import {
   type ActivityFeedFilter
 } from "../../services/domain/activityEvents";
 import { fetchActivityEvents } from "../../services/miseService";
+import {
+  isRestaurantScopedHubQueryReady,
+  resolveRestaurantScopedHubLoadState
+} from "../../services/presentation/hubLoadState";
 import { captureMiseError } from "../../services/telemetry";
 
 const dateRanges: ActivityDateRange[] = ["all", "today", "yesterday", "this_week"];
@@ -36,7 +40,11 @@ export default function ActivityHistoryScreen() {
   const [error, setError] = useState(false);
   const [loadedRestaurantId, setLoadedRestaurantId] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const hasLoaded = useRef(false);
+  const loadFailedRef = useRef(false);
+  const loadedQueryRef = useRef<string | null>(null);
   const activeRestaurantIdRef = useRef<string | null>(restaurant?.id ?? null);
+  const activeQueryKey = `${filter}:${range}`;
   activeRestaurantIdRef.current = restaurant?.id ?? null;
 
   const filterOptions = useMemo<readonly SegmentOption<ActivityFeedFilter>[]>(
@@ -64,6 +72,9 @@ export default function ActivityHistoryScreen() {
 
   useEffect(() => {
     requestIdRef.current += 1;
+    hasLoaded.current = false;
+    loadFailedRef.current = false;
+    loadedQueryRef.current = null;
     setEvents([]);
     setLoadedRestaurantId(null);
     setError(false);
@@ -78,7 +89,18 @@ export default function ActivityHistoryScreen() {
     }
     const restaurantId = restaurant.id;
     const requestId = ++requestIdRef.current;
-    setLoading(true);
+    const queryKey = activeQueryKey;
+    const queryChanged = loadedQueryRef.current !== null && loadedQueryRef.current !== queryKey;
+    const retryingAfterFailure = loadFailedRef.current;
+    if (queryChanged) {
+      setEvents([]);
+    }
+    if (queryChanged || retryingAfterFailure) {
+      setLoadedRestaurantId(null);
+      setLoading(true);
+    } else if (!hasLoaded.current) {
+      setLoading(true);
+    }
     setError(false);
     try {
       const bounds = activityDateRangeBounds(range);
@@ -92,16 +114,20 @@ export default function ActivityHistoryScreen() {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
       setEvents(next);
       setLoadedRestaurantId(restaurantId);
+      loadedQueryRef.current = queryKey;
+      loadFailedRef.current = false;
     } catch (loadError) {
       if (requestId !== requestIdRef.current || activeRestaurantIdRef.current !== restaurantId) return;
+      loadFailedRef.current = true;
       captureMiseError(loadError, { flow: "activity", operation: "load", restaurant_id: restaurantId });
       setError(true);
     } finally {
       if (requestId === requestIdRef.current && activeRestaurantIdRef.current === restaurantId) {
+        hasLoaded.current = true;
         setLoading(false);
       }
     }
-  }, [filter, range, restaurant?.id]);
+  }, [activeQueryKey, restaurant?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -109,7 +135,36 @@ export default function ActivityHistoryScreen() {
     }, [load])
   );
 
-  const visible = loadedRestaurantId === restaurant?.id ? events : [];
+  const hubLoadState = resolveRestaurantScopedHubLoadState({
+    restaurantId: restaurant?.id,
+    loadedRestaurantId,
+    loadError: error
+  });
+  const hubReady = hubLoadState === "ready";
+  const queryReady = isRestaurantScopedHubQueryReady({
+    hubReady,
+    activeQueryKey,
+    loadedQueryKey: loadedQueryRef.current
+  });
+  const visible = queryReady ? events : [];
+
+  function changeRange(next: ActivityDateRange) {
+    if (next === range) return;
+    requestIdRef.current += 1;
+    setLoadedRestaurantId(null);
+    setLoading(Boolean(restaurant));
+    setError(false);
+    setRange(next);
+  }
+
+  function changeFilter(next: ActivityFeedFilter) {
+    if (next === filter) return;
+    requestIdRef.current += 1;
+    setLoadedRestaurantId(null);
+    setLoading(Boolean(restaurant));
+    setError(false);
+    setFilter(next);
+  }
 
   return (
     <Screen
@@ -127,7 +182,7 @@ export default function ActivityHistoryScreen() {
           accessibilityLabel={t("activity.range.accessibility")}
           options={rangeOptions}
           value={range}
-          onValueChange={setRange}
+          onValueChange={changeRange}
           scrollable
           variant="pills"
         />
@@ -135,7 +190,7 @@ export default function ActivityHistoryScreen() {
           accessibilityLabel={t("activity.filter.accessibility")}
           options={filterOptions}
           value={filter}
-          onValueChange={setFilter}
+          onValueChange={changeFilter}
           scrollable
           variant="pills"
         />
@@ -150,7 +205,7 @@ export default function ActivityHistoryScreen() {
           />
         ) : null}
 
-        {!error && visible.length === 0 ? (
+        {!error && queryReady && visible.length === 0 ? (
           <EmptyState title={t("activity.empty.title")} body={t("activity.empty.body")} />
         ) : null}
 
