@@ -386,16 +386,19 @@ test("staging preflight rejects wrong origins before trusted values can be trans
   assert.match(transmitted, /public-anon-sentinel/);
 });
 
-test("QA child environments exclude service keys and passwords", async () => {
+test("QA child environments exclude service keys and bind TestFlight to public staging", async () => {
   // @ts-ignore
-  const { publicQaEnv, trustedHostedChildEnv } = await import("../scripts/safe-env.mjs");
+  const { publicQaEnv, testflightPublicQaEnv, trustedHostedChildEnv } = await import("../scripts/safe-env.mjs");
   const source = {
     NODE_ENV: "test" as const,
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     SUPABASE_STAGING_SECRET_KEY: "service-sentinel",
     MISE_STAGING_SEED_PASSWORD: "password-sentinel",
-    SUPABASE_STAGING_ANON_KEY: "anon-sentinel"
+    SUPABASE_STAGING_ANON_KEY: "anon-sentinel",
+    SUPABASE_STAGING_URL: "https://ycwozuyyxunnnvalydar.supabase.co",
+    SUPABASE_STAGING_PROJECT_REF: "ycwozuyyxunnnvalydar",
+    MISE_STAGING_MARKER: "mise-staging-marker-2026"
   };
   const qa = publicQaEnv(
     { EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon-sentinel" },
@@ -406,6 +409,25 @@ test("QA child environments exclude service keys and passwords", async () => {
   assert.equal(qa.EXPO_PUBLIC_SUPABASE_ANON_KEY, "anon-sentinel");
   const trusted = trustedHostedChildEnv({}, source) as Record<string, string | undefined>;
   assert.equal(trusted.SUPABASE_STAGING_SECRET_KEY, "service-sentinel");
+  const testflight = testflightPublicQaEnv({
+    EXPO_PUBLIC_APP_ENV: "production",
+    EXPO_PUBLIC_ENABLE_DEMO_MODE: "true",
+    EXPO_PUBLIC_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co"
+  }, source) as Record<string, string | undefined>;
+  assert.equal(testflight.EXPO_PUBLIC_APP_ENV, "staging");
+  assert.equal(testflight.EXPO_PUBLIC_ENABLE_DEMO_MODE, "false");
+  assert.equal(testflight.EXPO_PUBLIC_SUPABASE_URL, source.SUPABASE_STAGING_URL);
+  assert.equal(testflight.EXPO_PUBLIC_SUPABASE_ANON_KEY, "anon-sentinel");
+  assert.equal(testflight.SUPABASE_STAGING_SECRET_KEY, undefined);
+  assert.equal(testflight.MISE_STAGING_SEED_PASSWORD, undefined);
+  assert.throws(
+    () => testflightPublicQaEnv({}, {
+      ...source,
+      SUPABASE_STAGING_URL: "https://abcdefghijklmnopqrst.supabase.co",
+      SUPABASE_STAGING_PROJECT_REF: "abcdefghijklmnopqrst"
+    }),
+    /must target staging project/
+  );
 });
 
 test("final SQL function inventory handles plain create, replace, alter, and unknown privileged DDL", async () => {

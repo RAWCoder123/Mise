@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { publicQaEnv } from "./safe-env.mjs";
+import { publicQaEnv, testflightPublicQaEnv } from "./safe-env.mjs";
 
 const baseRoutes = [
   "/",
@@ -42,7 +42,11 @@ const debugPort = Number(process.env.MISE_MOBILE_LAYOUT_DEBUG_PORT ?? 9333);
 const existingBaseUrl = process.env.MISE_MOBILE_LAYOUT_URL;
 const baseUrl = existingBaseUrl ?? `http://localhost:${expoPort}`;
 const timeoutMs = Number(process.env.MISE_MOBILE_LAYOUT_TIMEOUT_MS ?? 120000);
-const shouldRunInteractionQa = process.env.MISE_QA_INTERACTIONS === "1";
+const interactionMode = process.env.MISE_QA_INTERACTIONS ?? "none";
+if (!["none", "demo", "testflight"].includes(interactionMode)) {
+  throw new Error("MISE_QA_INTERACTIONS must be none, demo, or testflight.");
+}
+const shouldRunInteractionQa = interactionMode !== "none";
 const shouldEmulateReducedMotion = process.env.MISE_QA_REDUCED_MOTION === "1";
 const screenshotPath = process.env.MISE_QA_SCREENSHOT_PATH;
 const viewport = {
@@ -54,6 +58,22 @@ const chromeCandidates = process.platform === "darwin"
   ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
   : ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
 const chromePath = process.env.CHROME_PATH ?? chromeCandidates.find(existsSync);
+
+if (interactionMode === "testflight" && existingBaseUrl) {
+  throw new Error("TestFlight interaction QA must launch its own staging-configured Expo server.");
+}
+
+const qaChildEnv = interactionMode === "testflight"
+  ? testflightPublicQaEnv()
+  : interactionMode === "demo"
+    ? publicQaEnv({
+        CI: "1",
+        EXPO_NO_TELEMETRY: "1",
+        EXPO_NO_DOTENV: "1",
+        EXPO_PUBLIC_APP_ENV: "development",
+        EXPO_PUBLIC_ENABLE_DEMO_MODE: "true"
+      })
+    : publicQaEnv({ CI: "1", EXPO_NO_TELEMETRY: "1" });
 
 let expoProcess = null;
 let chromeProcess = null;
@@ -67,7 +87,7 @@ function sleep(ms) {
 function spawnLogged(command, args, outputSink, options = {}) {
   const child = spawn(command, args, {
     cwd: process.cwd(),
-    env: publicQaEnv({ CI: "1", EXPO_NO_TELEMETRY: "1" }),
+    env: qaChildEnv,
     detached: process.platform !== "win32",
     stdio: ["ignore", "pipe", "pipe"],
     ...options
@@ -382,7 +402,17 @@ async function clickByRoleAndText(cdp, role, label) {
     "if(!node)return false;node.click();return true;" +
     "})()";
   const clicked = await evaluateValue(cdp, expression);
-  if (!clicked) throw new Error("Could not find " + role + " containing \"" + label + "\".");
+  if (!clicked) {
+    const available = await evaluateValue(
+      cdp,
+      "(() => Array.from(document.querySelectorAll('[role=\"" + role + "\"]'))" +
+        ".map((node)=>(node.textContent||node.getAttribute('aria-label')||'').replace(/\\s+/g,' ').trim())" +
+        ".filter(Boolean).slice(0,12))()"
+    );
+    throw new Error(
+      "Could not find " + role + " containing \"" + label + "\". Available: " + JSON.stringify(available)
+    );
+  }
   await sleep(350);
 }
 
@@ -504,7 +534,7 @@ async function runAskMiseInteractionQa(cdp) {
   console.log("Mise Ask interaction QA passed.");
 }
 
-async function runOrderInteractionQa(cdp) {
+async function runDemoInteractionQa(cdp) {
   console.log("Mise core interaction QA: initialize -> phase brief -> inventory -> Gmail simulation -> orders -> recipes -> insights -> POS -> reset");
   await evaluateValue(cdp, "localStorage.clear(); true");
   await navigateAndMeasure(cdp, "/login", []);
@@ -642,7 +672,7 @@ async function runOrderInteractionQa(cdp) {
 
   await navigateAndMeasure(cdp, "/orders/00000000-0000-4000-8000-000000000601", []);
   await waitForBrowserCondition(cdp, "document.body.innerText.includes('Generated order')", "seeded supplier order detail");
-  await clickByRoleAndText(cdp, "button", "Simulate send");
+  await clickByRoleAndText(cdp, "button", "Approve & simulate");
   await waitForBrowserCondition(
     cdp,
     "document.body.innerText.includes('Demo send simulated') && document.body.innerText.includes('No email was sent')",
@@ -885,6 +915,67 @@ async function runOrderInteractionQa(cdp) {
   console.log("Mise core interaction QA passed.");
 }
 
+const testflightForbiddenText = [
+  "Demo data is ready to test",
+  "Open demo data",
+  "Customize setup first",
+  "Open demo kitchen",
+  "Restore demo data",
+  "Simulate send",
+  "Approve & simulate",
+  "Start Local Demo"
+];
+
+async function assertTestFlightRoute(cdp, route, expectedText) {
+  await navigateAndMeasure(cdp, route, []);
+  await waitForBrowserCondition(
+    cdp,
+    `document.body.innerText.includes(${JSON.stringify(expectedText)})`,
+    `${route} non-demo content`
+  );
+  const state = await evaluateValue(cdp, `(() => {
+    const text = document.body.innerText || "";
+    return {
+      forbidden: ${JSON.stringify(testflightForbiddenText)}.filter((label) => text.includes(label)),
+      loading: text.includes("Loading the restaurant workspace.")
+    };
+  })()`);
+  if (state.forbidden.length > 0) {
+    throw new Error(`${route} exposed demo-only UI: ${state.forbidden.join(", ")}`);
+  }
+  if (state.loading) throw new Error(`${route} remained on the workspace loading state.`);
+}
+
+async function runTestFlightInteractionQa(cdp) {
+  console.log("Mise TestFlight interaction QA: hosted staging shell with demo affordances disabled");
+  await evaluateValue(cdp, "localStorage.clear(); true");
+
+  await assertTestFlightRoute(cdp, "/login", "Supabase is configured");
+  await waitForBrowserCondition(
+    cdp,
+    "document.body.innerText.includes('Log in') && Boolean(document.querySelector('[aria-label=\"Email\"]'))",
+    "hosted login controls"
+  );
+
+  await assertTestFlightRoute(cdp, "/accept-invite", "Invitation link unavailable");
+  await clickByAriaLabel(cdp, "Back to sign in");
+  await waitForBrowserCondition(cdp, "location.pathname === '/login'", "invite back navigation");
+
+  await assertTestFlightRoute(cdp, "/setup", "Sign in required");
+  for (const [route, expectedText] of [
+    ["/today", "Today"],
+    ["/inventory", "Inventory"],
+    ["/orders", "Orders"],
+    ["/settings", "Profile"],
+    ["/settings/gmail", "Gmail connection"],
+    ["/settings/pos", "POS Connection"]
+  ]) {
+    await assertTestFlightRoute(cdp, route, expectedText);
+  }
+
+  console.log("Mise TestFlight interaction QA passed.");
+}
+
 async function main() {
   if (!chromePath || !existsSync(chromePath)) {
     throw new Error("Set CHROME_PATH to an installed browser or install Chrome/Chromium before running mobile QA.");
@@ -954,7 +1045,8 @@ async function main() {
     }
 
     if (failures.length === 0 && shouldRunInteractionQa) {
-      await runOrderInteractionQa(cdp);
+      if (interactionMode === "demo") await runDemoInteractionQa(cdp);
+      else await runTestFlightInteractionQa(cdp);
     }
   } finally {
     cdp.close();

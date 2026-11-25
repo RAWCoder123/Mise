@@ -49,7 +49,8 @@ const restaurantOwnedTables = new Set([
   "supplier_delivery_items",
   "recalculation_runs",
   "inventory_count_sessions",
-  "inventory_count_lines"
+  "inventory_count_lines",
+  "purchase_lines"
 ]);
 
 const tenantAuthorizationTables = new Set(["restaurant_memberships"]);
@@ -163,7 +164,8 @@ const selectOnlyAuthenticatedTables = new Set([
   "pos_sales",
   "setup_attachments",
   "inventory_count_sessions",
-  "inventory_count_lines"
+  "inventory_count_lines",
+  "purchase_lines"
 ]);
 
 runRequired("Running existing static security checks...", process.execPath, ["scripts/security-static.mjs"]);
@@ -275,6 +277,7 @@ const serviceOnlyPublicFunctions = new Set([
   "public.reserve_edge_function_invocation",
   "public.record_edge_function_security_event",
   "public.service_create_rules_engine_ai_insight",
+  "public.service_apply_pilot_operational_control",
   "public.service_set_system_operational_mode"
 ]);
 const globalServiceOnlyPublicFunctions = new Set([

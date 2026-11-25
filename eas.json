@@ -44,7 +44,7 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "staging",
-        "EXPO_PUBLIC_ENABLE_DEMO_MODE": "true",
+        "EXPO_PUBLIC_ENABLE_DEMO_MODE": "false",
         "EXPO_PUBLIC_RELEASE": "mise-mobile@0.1.0+2"
       }
     },

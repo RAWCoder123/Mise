@@ -7,7 +7,7 @@ This matrix documents the current intended authority. A check means the role may
 | Connect or disconnect Square | ✓ | ✓ | — | — | `link-square`, OAuth service RPCs |
 | Sync Square sales | ✓ | ✓ | ✓ | — | `sync-pos-sales` Edge role gate |
 | Choose authorized Square locations | — | — | — | — | Not implemented as an operator choice |
-| Resolve catalog/menu mapping | — | — | — | — | No operator workflow yet |
+| Resolve catalog/menu mapping | ✓ | ✓ | ✓ | — | Settings → POS mapping review + `review_pos_catalog_mapping` |
 | Begin inventory count | ✓ | ✓ | ✓ | ✓ | `operational-workflows` count draft actions |
 | Save count lines | ✓ | ✓ | ✓ | ✓ | Count-session service RPC |
 | Submit count | ✓ | ✓ | ✓ | ✓ | Count-session service RPC |
@@ -21,7 +21,7 @@ This matrix documents the current intended authority. A check means the role may
 | Dismiss recommendation | ✓ | ✓ | ✓ | — | `dismiss_purchase_recommendation` |
 | Review supplier draft | ✓ | ✓ | ✓ | view only | Tenant-scoped supplier order read |
 | Edit supplier draft note/date | ✓ | ✓ | ✓ | — | Supplier-order RPCs |
-| Manage supplier recipient | ✓ | ✓ | — | — | `upsert_supplier_recipient` |
+| Manage supplier recipient | ✓ | ✓ | ✓ | — | Durable supplier-ID recipient workflow |
 | Connect or disconnect Gmail | ✓ | ✓ | — | — | `link-gmail`, OAuth service RPCs |
 | Approve/send supplier email | ✓ | ✓ | ✓ | — | `approve_supplier_send_envelope` + `send-supplier-email` claim |
 | Record supplier delivery | ✓ | ✓ | ✓ | — | `record_supplier_delivery` |
@@ -31,7 +31,7 @@ This matrix documents the current intended authority. A check means the role may
 ## Pilot rules
 
 - Staff never approve count adjustments, purchasing recommendations, supplier drafts, or external communications.
-- Managers may execute restaurant operations but may not create provider credentials or change recipient identity.
+- Managers may execute the current restaurant operations and guarded supplier-recipient workflow, but may not create provider credentials.
 - Owners/admins own Square, Gmail, recipient, export, team, and autonomy configuration.
 - Every mutating request derives actor identity from the authenticated session and verifies active membership for the restaurant ID in the request.
 - UI visibility is not an authorization boundary; Edge Functions and database RPCs remain authoritative.

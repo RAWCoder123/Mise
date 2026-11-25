@@ -1,3 +1,7 @@
+import { validateStagingTarget } from "./staging-preflight.mjs";
+
+export const testflightStagingProjectRef = "ycwozuyyxunnnvalydar";
+
 const baseChildVariables = [
   "PATH",
   "HOME",
@@ -62,6 +66,34 @@ export function minimalChildEnv(extra = {}, source = process.env) {
 
 export function publicQaEnv(extra = {}, source = process.env) {
   return minimalChildEnv(extra, source);
+}
+
+export function testflightPublicQaEnv(extra = {}, source = process.env) {
+  const projectRef = String(source.SUPABASE_STAGING_PROJECT_REF ?? "").trim();
+  const target = validateStagingTarget(
+    source.SUPABASE_STAGING_URL,
+    projectRef,
+    source.SUPABASE_PRODUCTION_PROJECT_REF
+  );
+  const anonKey = String(source.SUPABASE_STAGING_ANON_KEY ?? "").trim();
+  const marker = String(source.MISE_STAGING_MARKER ?? "").trim();
+  if (projectRef !== testflightStagingProjectRef) {
+    throw new Error(`TestFlight QA must target staging project ${testflightStagingProjectRef}.`);
+  }
+  if (!anonKey || marker.length < 16 || marker.length > 200) {
+    throw new Error("TestFlight QA requires the public staging anon key and valid staging identity marker.");
+  }
+
+  return minimalChildEnv({
+    ...extra,
+    CI: "1",
+    EXPO_NO_TELEMETRY: "1",
+    EXPO_NO_DOTENV: "1",
+    EXPO_PUBLIC_APP_ENV: "staging",
+    EXPO_PUBLIC_ENABLE_DEMO_MODE: "false",
+    EXPO_PUBLIC_SUPABASE_URL: target.url,
+    EXPO_PUBLIC_SUPABASE_ANON_KEY: anonKey
+  }, source);
 }
 
 export function trustedHostedChildEnv(extra = {}, source = process.env) {
