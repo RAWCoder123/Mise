@@ -1958,7 +1958,7 @@ export function createSupabaseRepository(): MiseRepository {
       if (options.until) query = query.lte("occurred_at", options.until);
       if (options.attentionOnly) query = query.eq("requires_attention", true);
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       let events = ((data ?? []) as PersistedActivityEventRow[]).map(activityEventFromPersistedRow);
       if (events.some((event) => event.restaurantId !== restaurantId)) {
         throw new Error("Activity events failed restaurant scope validation.");
@@ -2104,7 +2104,7 @@ export function createSupabaseRepository(): MiseRepository {
         query = query.eq("status", options.status);
       }
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       const actions = ((data ?? []) as PersistedMiseActionRow[]).map(miseActionFromPersistedRow);
       if (actions.some((action) => action.restaurantId !== restaurantId)) {
         throw new Error("Mise actions failed restaurant scope validation.");
@@ -2120,7 +2120,7 @@ export function createSupabaseRepository(): MiseRepository {
         .eq("action_type", "send_supplier_order")
         .eq("idempotency_key", `send_supplier_order:${orderId}`)
         .maybeSingle();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       if (!data) return null;
       const action = miseActionFromPersistedRow(data as PersistedMiseActionRow);
       if (action.restaurantId !== restaurantId) {
@@ -2135,7 +2135,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_action_id: actionId,
         p_decision: decision
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       const row = (Array.isArray(data) ? data[0] : data) as PersistedMiseActionRow | null;
       if (!row) throw new Error("Action decision returned an empty response.");
       const action = miseActionFromPersistedRow(row);
