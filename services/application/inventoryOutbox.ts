@@ -7,7 +7,47 @@ import {
 } from "../domain/inventoryOutbox";
 import type { InventoryEventAcceptance } from "../domain/inventoryLedger";
 import type { InventoryOutboxRepository } from "../repositories/inventoryOutboxRepository";
-import { isTenantAuthorizationError } from "../tenantAuthorizationEvents";
+function authorizationStatusFromError(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const candidate = error as {
+    status?: unknown;
+    context?: { status?: unknown };
+  };
+  const status = candidate.status ?? candidate.context?.status;
+  return typeof status === "number" ? status : null;
+}
+
+function isInventoryOutboxRetryableAuthenticationError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  const code = typeof candidate.code === "string" ? candidate.code : "";
+  const message = typeof candidate.message === "string" ? candidate.message : "";
+
+  if (authorizationStatusFromError(error) === 401) return true;
+  if (code === "PGRST301" || code === "PGRST303") return true;
+  if (/not authenticated|invalid or expired user session/i.test(message)) return true;
+  return false;
+}
+
+function isInventoryOutboxDurableAuthorizationDenial(error: unknown) {
+  if (isInventoryOutboxRetryableAuthenticationError(error)) return false;
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? String(error.message)
+        : "";
+  if (!error || typeof error !== "object") return false;
+  const code =
+    typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : "";
+
+  if (/permission denied|access denied/i.test(message)) return true;
+  if (authorizationStatusFromError(error) === 403) return true;
+  if (code === "42501") return true;
+  return false;
+}
 
 function inventorySubmissionFailureFromError(
   error: unknown
@@ -26,7 +66,7 @@ function inventorySubmissionFailureFromError(
       existingEvent: null
     };
   }
-  if (isTenantAuthorizationError(error)) {
+  if (isInventoryOutboxDurableAuthorizationDenial(error)) {
     return { status: "rejected", reason: "permission_denied" };
   }
   return null;

@@ -180,3 +180,52 @@ test("permanent submission failures settle visibly instead of retrying", async (
     assert.equal(settled?.nextAttemptAt, null);
   }
 });
+
+test("authentication and session failures remain retryable instead of terminal rejection", async () => {
+  for (const scenario of [
+    {
+      label: "http-401",
+      error: Object.assign(new Error("JWT expired"), { status: 401 })
+    },
+    {
+      label: "rpc-not-authenticated",
+      error: Object.assign(new Error("Not authenticated"), { code: "42501" })
+    },
+    {
+      label: "pgrst301",
+      error: Object.assign(new Error("JWT expired"), { code: "PGRST301" })
+    },
+    {
+      label: "pgrst303",
+      error: Object.assign(new Error("JWT expired"), { code: "PGRST303" })
+    },
+    {
+      label: "session-expired",
+      error: new Error("invalid or expired user session")
+    }
+  ] as const) {
+    const repository = createInventoryOutboxRepository(memoryStorage());
+    await repository.save(
+      createInventoryOutboxEntry({
+        id: `outbox-${scenario.label}`,
+        event: event(`client-${scenario.label}`),
+        now: "2026-07-26T10:00:00.000Z"
+      })
+    );
+
+    const summary = await flushInventoryOutbox({
+      restaurantId: "restaurant-a",
+      repository,
+      submit: async () => {
+        throw scenario.error;
+      },
+      now: () => "2026-07-26T10:00:02.000Z"
+    });
+    const [deferred] = await repository.list("restaurant-a");
+
+    assert.equal(summary.deferred, 1, scenario.label);
+    assert.equal(summary.rejected, 0, scenario.label);
+    assert.equal(deferred?.status, "pending", scenario.label);
+    assert.equal(deferred?.nextAttemptAt, "2026-07-26T10:00:03.000Z", scenario.label);
+  }
+});
