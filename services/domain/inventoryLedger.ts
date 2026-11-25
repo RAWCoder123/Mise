@@ -171,6 +171,17 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
+  // Operator write-path labels are always `operator_${eventType}` (see
+  // requireInventoryOperation). A manager JWT minting operator_receipt on waste
+  // (or any other mismatch / case variant) would still move on-hand while
+  // Activity and history classify the wrong operation provenance.
+  const trimmedSource = input.source.trim();
+  if (
+    trimmedSource.toLowerCase().startsWith("operator_") &&
+    trimmedSource !== `operator_${input.eventType}`
+  ) {
+    return "mismatched_operator_source";
+  }
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
   // A physical count observes the present, so it may not be effective in the future.
   // Mirrors the reject_future_dated_inventory_count database trigger.
