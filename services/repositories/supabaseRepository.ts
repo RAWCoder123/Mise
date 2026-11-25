@@ -82,6 +82,7 @@ import {
   normalizePurchaseLineRow,
   toPurchaseLinePayload
 } from "../domain/purchaseLines";
+import { normalizePurchaseLineCreditAttachmentRow } from "../domain/purchaseLineCreditAttachments";
 import {
   normalizeAppUser,
   normalizeInsight,
@@ -1627,6 +1628,38 @@ export function createSupabaseRepository(): MiseRepository {
       });
       if (error) throw error;
       return ((data ?? []) as Record<string, unknown>[]).map(normalizePurchaseLineNetRow);
+    },
+
+    async fetchPurchaseLineCreditAttachments(restaurantId) {
+      const { data, error } = await client
+        .from("purchase_line_credit_attachments")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("linked_at", { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map(
+        normalizePurchaseLineCreditAttachmentRow
+      );
+    },
+
+    async attachPurchaseLineCredit(input) {
+      const { data, error } = await client.rpc("attach_purchase_line_credit", {
+        p_restaurant_id: input.restaurantId,
+        p_credit_line_id: input.creditLineId,
+        p_purchase_line_id: input.purchaseLineId
+      });
+      if (error) throw error;
+      return normalizePurchaseLineCreditAttachmentRow(data as Record<string, unknown>);
+    },
+
+    async revokePurchaseLineCreditAttachment(restaurantId, attachmentId) {
+      const { data, error } = await client.rpc("revoke_purchase_line_credit_attachment", {
+        p_restaurant_id: restaurantId,
+        p_attachment_id: attachmentId
+      });
+      if (error) throw error;
+      return normalizePurchaseLineCreditAttachmentRow(data as Record<string, unknown>);
     },
 
     async replacePendingRecommendations(restaurantId, _inserts) {

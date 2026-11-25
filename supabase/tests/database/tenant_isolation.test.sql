@@ -693,6 +693,7 @@ select is(
     'pos_sales',
     'purchase_decision_events',
     'purchase_lines',
+    'purchase_line_credit_attachments',
     'purchase_orders',
     'purchase_recommendations',
     'recalculation_runs',
