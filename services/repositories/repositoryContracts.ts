@@ -47,6 +47,13 @@ import type {
   PurchaseDecisionEvent,
   PurchaseDecisionPattern
 } from "../domain/purchaseDecisionMemory";
+import type {
+  NormalizedPurchaseLineInput,
+  PurchaseLine,
+  PurchaseLineIngestionResult,
+  PurchaseLineNetByItem,
+  PurchaseLineSource
+} from "../domain/purchaseLines";
 import type { VerifiedProviderSaleMapping } from "../domain/providerSaleIdentity";
 import {
   PURCHASE_AUTHORITY_BLOCKER_CODES,
@@ -412,6 +419,7 @@ export const RESTAURANT_EXPORT_DATASETS = [
   "menu_item_ingredients",
   "purchase_recommendations",
   "purchase_decision_events",
+  "purchase_lines",
   "supplier_orders",
   "pos_integrations",
   "sales_imports",
@@ -668,6 +676,27 @@ export interface MiseRepository {
     restaurantId: string,
     eventId: string
   ): Promise<PurchaseDecisionEvent>;
+  /**
+   * MISE-004C purchase history. Ingestion is idempotent on
+   * (restaurant, supplier, document reference, line index); reads are
+   * tenant-scoped; nothing here mutates or removes a recorded line.
+   */
+  ingestPurchaseLines(input: {
+    restaurantId: string;
+    source: PurchaseLineSource;
+    sourceDocumentReference: string;
+    lines: NormalizedPurchaseLineInput[];
+    supplierId?: string | null;
+    correlationId?: string | null;
+  }): Promise<PurchaseLineIngestionResult>;
+  fetchPurchaseLines(restaurantId: string, limit?: number): Promise<PurchaseLine[]>;
+  supersedePurchaseLine(
+    restaurantId: string,
+    lineId: string,
+    correction: NormalizedPurchaseLineInput
+  ): Promise<PurchaseLine>;
+  /** Factual nets from recorded lines. Unmatched credits are flagged, not folded in. */
+  fetchPurchaseLineNetByItem(restaurantId: string): Promise<PurchaseLineNetByItem[]>;
   replacePendingRecommendations(restaurantId: string, inserts: PurchaseRecommendationInput[]): Promise<void>;
   fetchSupplierOrders(restaurantId: string): Promise<SupplierOrder[]>;
   /**

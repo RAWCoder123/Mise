@@ -77,6 +77,12 @@ import {
   normalizePurchaseDecisionPattern,
 } from "../domain/purchaseDecisionMemory";
 import {
+  normalizePurchaseLineIngestionResult,
+  normalizePurchaseLineNetRow,
+  normalizePurchaseLineRow,
+  toPurchaseLinePayload
+} from "../domain/purchaseLines";
+import {
   normalizeAppUser,
   normalizeInsight,
   normalizeAiInsight,
@@ -1577,6 +1583,50 @@ export function createSupabaseRepository(): MiseRepository {
       });
       if (error) throw error;
       return normalizePurchaseDecisionEvent(data as Record<string, unknown>);
+    },
+
+    async ingestPurchaseLines(input) {
+      const { data, error } = await client.rpc("ingest_purchase_lines", {
+        p_restaurant_id: input.restaurantId,
+        p_source: input.source,
+        p_source_document_reference: input.sourceDocumentReference,
+        p_lines: input.lines.map(toPurchaseLinePayload),
+        p_supplier_id: input.supplierId ?? null,
+        p_correlation_id: input.correlationId ?? null
+      });
+      if (error) throw error;
+      return normalizePurchaseLineIngestionResult(data as Record<string, unknown>);
+    },
+
+    async fetchPurchaseLines(restaurantId, limit = 500) {
+      const { data, error } = await client
+        .from("purchase_lines")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .order("transaction_date", { ascending: false })
+        .order("line_index", { ascending: true })
+        .limit(limit);
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map(normalizePurchaseLineRow);
+    },
+
+    async supersedePurchaseLine(restaurantId, lineId, correction) {
+      const { data, error } = await client.rpc("supersede_purchase_line", {
+        p_restaurant_id: restaurantId,
+        p_line_id: lineId,
+        p_line: toPurchaseLinePayload(correction),
+        p_correlation_id: null
+      });
+      if (error) throw error;
+      return normalizePurchaseLineRow(data as Record<string, unknown>);
+    },
+
+    async fetchPurchaseLineNetByItem(restaurantId) {
+      const { data, error } = await client.rpc("list_purchase_line_net_by_item", {
+        p_restaurant_id: restaurantId
+      });
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map(normalizePurchaseLineNetRow);
     },
 
     async replacePendingRecommendations(restaurantId, _inserts) {
