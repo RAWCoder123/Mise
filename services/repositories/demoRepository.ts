@@ -122,6 +122,10 @@ import {
   type PurchaseLineNetByItem,
   type PurchaseLineSource
 } from "../domain/purchaseLines";
+import {
+  PURCHASE_LINE_CREDIT_ATTACHMENT_EVIDENCE_VERSION,
+  type PurchaseLineCreditAttachment
+} from "../domain/purchaseLineCreditAttachments";
 import { mutateDemoState, readDemoState, resetDemoStore } from "../localStore";
 import {
   createDemoSupplier,
@@ -2428,6 +2432,122 @@ export function createLocalDemoRepository(): MiseRepository {
         });
         state.purchaseLines.push(stored);
         return stored;
+      });
+    },
+
+    async fetchPurchaseLineCreditAttachments(restaurantId) {
+      const state = await readReadyDemoState(restaurantId);
+      return (state.purchaseLineCreditAttachments ?? []).filter(
+        (attachment) => attachment.restaurantId === restaurantId
+      );
+    },
+
+    async attachPurchaseLineCredit(input) {
+      return mutateDemoState((state) => {
+        if (!Array.isArray(state.purchaseLineCreditAttachments)) {
+          state.purchaseLineCreditAttachments = [];
+        }
+        const credit = (state.purchaseLines ?? []).find(
+          (line) => line.restaurantId === input.restaurantId && line.id === input.creditLineId
+        );
+        if (!credit) throw new Error("Credit purchase line not found");
+        if (credit.lineType !== "credit") {
+          throw new Error("Only a credit line may receive a manager attachment");
+        }
+        if (
+          (state.purchaseLines ?? []).some(
+            (line) =>
+              line.restaurantId === input.restaurantId && line.supersedesLineId === credit.id
+          )
+        ) {
+          throw new Error("Corrected credit lines cannot receive a new attachment");
+        }
+        if (credit.creditsLineId) {
+          throw new Error("Credit already names its offset on the source document");
+        }
+        const purchase = (state.purchaseLines ?? []).find(
+          (line) => line.restaurantId === input.restaurantId && line.id === input.purchaseLineId
+        );
+        if (!purchase) throw new Error("Purchase line not found for restaurant");
+        if (purchase.lineType !== "purchase") {
+          throw new Error("Credits may only attach to purchase lines");
+        }
+        if ((purchase.supplierId ?? null) !== (credit.supplierId ?? null)) {
+          throw new Error("Credited purchase line is not available for this supplier");
+        }
+        if (credit.id === purchase.id) {
+          throw new Error("A credit cannot attach to itself");
+        }
+
+        const existing = state.purchaseLineCreditAttachments.find(
+          (attachment) =>
+            attachment.restaurantId === input.restaurantId &&
+            attachment.creditLineId === input.creditLineId &&
+            attachment.status === "verified"
+        );
+        if (existing && existing.purchaseLineId === input.purchaseLineId) {
+          return existing;
+        }
+
+        const linkedAt = new Date().toISOString();
+        if (existing) {
+          existing.status = "revoked";
+          existing.revokedBy = DEMO_USER_ID;
+          existing.revokedAt = linkedAt;
+        }
+
+        const attachment: PurchaseLineCreditAttachment = {
+          id: createId("purchase_line_credit_attachment"),
+          restaurantId: input.restaurantId,
+          creditLineId: input.creditLineId,
+          purchaseLineId: input.purchaseLineId,
+          status: "verified",
+          evidenceVersion: PURCHASE_LINE_CREDIT_ATTACHMENT_EVIDENCE_VERSION,
+          linkedBy: DEMO_USER_ID,
+          linkedAt,
+          revokedBy: null,
+          revokedAt: null
+        };
+        state.purchaseLineCreditAttachments.push(attachment);
+        appendDemoAuditLog(state, {
+          restaurant_id: input.restaurantId,
+          action: "purchase_line_credit_attached",
+          entity_table: "purchase_line_credit_attachments",
+          entity_id: attachment.id,
+          metadata: {
+            credit_line_id: input.creditLineId,
+            purchase_line_id: input.purchaseLineId,
+            replaced_attachment_id: existing?.id ?? null
+          }
+        });
+        return attachment;
+      });
+    },
+
+    async revokePurchaseLineCreditAttachment(restaurantId, attachmentId) {
+      return mutateDemoState((state) => {
+        if (!Array.isArray(state.purchaseLineCreditAttachments)) {
+          state.purchaseLineCreditAttachments = [];
+        }
+        const attachment = state.purchaseLineCreditAttachments.find(
+          (candidate) => candidate.restaurantId === restaurantId && candidate.id === attachmentId
+        );
+        if (!attachment) throw new Error("Purchase line credit attachment not found");
+        if (attachment.status === "revoked") return attachment;
+        attachment.status = "revoked";
+        attachment.revokedBy = DEMO_USER_ID;
+        attachment.revokedAt = new Date().toISOString();
+        appendDemoAuditLog(state, {
+          restaurant_id: restaurantId,
+          action: "purchase_line_credit_attachment_revoked",
+          entity_table: "purchase_line_credit_attachments",
+          entity_id: attachment.id,
+          metadata: {
+            credit_line_id: attachment.creditLineId,
+            purchase_line_id: attachment.purchaseLineId
+          }
+        });
+        return attachment;
       });
     },
 
