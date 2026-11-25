@@ -167,6 +167,13 @@ export function projectInventoryEvents(
   };
 }
 
+/** Matches inventory_events_metadata_bound_check / reject_oversized trigger. */
+export const INVENTORY_EVENT_METADATA_MAX_BYTES = 8192;
+/** Matches inventory_events_source_reference_bound_check and operator validation. */
+export const INVENTORY_EVENT_SOURCE_REFERENCE_MAX_LENGTH = 200;
+/** Matches inventory_events_reason_code_bound_check and operator validation. */
+export const INVENTORY_EVENT_REASON_CODE_MAX_LENGTH = 80;
+
 function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
@@ -191,7 +198,32 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // Mirror hosted reject_oversized_inventory_event_evidence so offline/outbox
+  // paths settle oversized evidence as terminal rejects instead of retrying.
+  if (
+    input.sourceReference != null &&
+    input.sourceReference.length > INVENTORY_EVENT_SOURCE_REFERENCE_MAX_LENGTH
+  ) {
+    return "oversized_source_reference";
+  }
+  if (
+    input.reasonCode != null &&
+    input.reasonCode.length > INVENTORY_EVENT_REASON_CODE_MAX_LENGTH
+  ) {
+    return "oversized_reason_code";
+  }
+  if (jsonPayloadByteLength(input.metadata) > INVENTORY_EVENT_METADATA_MAX_BYTES) {
+    return "oversized_metadata";
+  }
   return null;
+}
+
+function jsonPayloadByteLength(value: Readonly<Record<string, unknown>> | null | undefined) {
+  const text = JSON.stringify(value ?? {});
+  if (typeof TextEncoder !== "undefined") {
+    return new TextEncoder().encode(text).length;
+  }
+  return Buffer.byteLength(text, "utf8");
 }
 
 function sameEventPayload(event: InventoryEvent, candidate: InventoryEventInput) {

@@ -211,6 +211,15 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "evidence" substring so oversized evidence fields
+  // settle as terminal outbox reasons instead of incomplete_evidence.
+  if (message.includes("metadata exceeds the bounded size")) return "oversized_metadata";
+  if (message.includes("source reference exceeds the bounded length")) {
+    return "oversized_source_reference";
+  }
+  if (message.includes("reason code exceeds the bounded length")) {
+    return "oversized_reason_code";
+  }
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
