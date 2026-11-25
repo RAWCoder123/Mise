@@ -33,6 +33,7 @@ test("in-memory inventory event recorder lists accepted events", async () => {
   await record({
     ...receiptInput,
     eventType: "waste",
+    source: "operator_waste",
     clientEventId: "client-waste-1",
     idempotencyKey: "inventory:client-waste-1",
     quantity: 100,
