@@ -138,3 +138,45 @@ test("server conflicts are terminal and remain visible after restart", async () 
   assert.equal(conflict?.resolutionReason, "idempotency_payload_mismatch");
   assert.equal(conflict?.authoritativeEvent?.id, "server-existing");
 });
+
+test("permanent submission failures settle visibly instead of retrying", async () => {
+  for (const scenario of [
+    {
+      error: Object.assign(new Error("permission denied"), { code: "42501" }),
+      status: "rejected",
+      reason: "permission_denied",
+      summaryKey: "rejected"
+    },
+    {
+      error: new Error("Inventory event idempotency conflict"),
+      status: "conflict",
+      reason: "idempotency_payload_mismatch",
+      summaryKey: "conflicted"
+    }
+  ] as const) {
+    const repository = createInventoryOutboxRepository(memoryStorage());
+    await repository.save(
+      createInventoryOutboxEntry({
+        id: `outbox-${scenario.status}`,
+        event: event(`client-${scenario.status}`),
+        now: "2026-07-26T10:00:00.000Z"
+      })
+    );
+
+    const summary = await flushInventoryOutbox({
+      restaurantId: "restaurant-a",
+      repository,
+      submit: async () => {
+        throw scenario.error;
+      },
+      now: () => "2026-07-26T10:00:02.000Z"
+    });
+    const [settled] = await repository.list("restaurant-a");
+
+    assert.equal(summary[scenario.summaryKey], 1);
+    assert.equal(summary.deferred, 0);
+    assert.equal(settled?.status, scenario.status);
+    assert.equal(settled?.resolutionReason, scenario.reason);
+    assert.equal(settled?.nextAttemptAt, null);
+  }
+});

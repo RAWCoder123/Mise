@@ -7,6 +7,30 @@ import {
 } from "../domain/inventoryOutbox";
 import type { InventoryEventAcceptance } from "../domain/inventoryLedger";
 import type { InventoryOutboxRepository } from "../repositories/inventoryOutboxRepository";
+import { isTenantAuthorizationError } from "../tenantAuthorizationEvents";
+
+function inventorySubmissionFailureFromError(
+  error: unknown
+): InventoryEventAcceptance | null {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? String(error.message)
+        : "";
+
+  if (/idempotency.*conflict|payload.*mismatch/i.test(message)) {
+    return {
+      status: "conflict",
+      reason: "idempotency_payload_mismatch",
+      existingEvent: null
+    };
+  }
+  if (isTenantAuthorizationError(error)) {
+    return { status: "rejected", reason: "permission_denied" };
+  }
+  return null;
+}
 
 export interface InventoryOutboxFlushSummary {
   considered: number;
@@ -38,14 +62,19 @@ export async function flushInventoryOutbox(input: {
     let acceptance: InventoryEventAcceptance;
     try {
       acceptance = await input.submit(submitting);
-    } catch {
-      const deferred = deferInventoryOutboxSubmission({
-        entry: submitting,
-        now: input.now()
-      });
-      await input.repository.save(deferred);
-      summary.deferred += 1;
-      continue;
+    } catch (error) {
+      const terminal = inventorySubmissionFailureFromError(error);
+      if (terminal) {
+        acceptance = terminal;
+      } else {
+        const deferred = deferInventoryOutboxSubmission({
+          entry: submitting,
+          now: input.now()
+        });
+        await input.repository.save(deferred);
+        summary.deferred += 1;
+        continue;
+      }
     }
     const settled = settleInventoryOutboxSubmission({
       entry: submitting,
