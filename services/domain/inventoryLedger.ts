@@ -167,6 +167,14 @@ export function projectInventoryEvents(
   };
 }
 
+const SUPPLIER_DELIVERY_SOURCE = "supplier_delivery";
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string | null | undefined) {
+  return typeof value === "string" && UUID_PATTERN.test(value.trim());
+}
+
 function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
@@ -191,6 +199,16 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // Privileged order-path provenance. Freeform source=supplier_delivery without a
+  // UUID delivery id would suppress Activity and falsify receive history. Existence
+  // of the same-tenant delivery row is enforced by the hosted trigger and demo path.
+  if (
+    input.eventType === "receipt" &&
+    input.source.trim() === SUPPLIER_DELIVERY_SOURCE &&
+    !isUuid(input.sourceReference)
+  ) {
+    return "invalid_supplier_delivery_reference";
+  }
   return null;
 }
 
