@@ -805,7 +805,7 @@ export function createSupabaseRepository(): MiseRepository {
       .select("restaurant_id, task_id, depends_on_task_id")
       .eq("restaurant_id", restaurantId)
       .eq("task_id", taskId);
-    if (error) throw error;
+    if (error) throwRepositoryError(error, restaurantId);
     const rows = (data ?? []) as Array<{
       restaurant_id: string;
       task_id: string;
@@ -1981,8 +1981,8 @@ export function createSupabaseRepository(): MiseRepository {
           .select("restaurant_id, task_id, depends_on_task_id")
           .eq("restaurant_id", restaurantId)
       ]);
-      if (tasksResult.error) throw tasksResult.error;
-      if (dependenciesResult.error) throw dependenciesResult.error;
+      if (tasksResult.error) throwRepositoryError(tasksResult.error, restaurantId);
+      if (dependenciesResult.error) throwRepositoryError(dependenciesResult.error, restaurantId);
       const dependenciesByTask = new Map<string, string[]>();
       for (const row of (dependenciesResult.data ?? []) as Array<{
         restaurant_id: string;
@@ -2011,7 +2011,7 @@ export function createSupabaseRepository(): MiseRepository {
         "create_restaurant_task",
         createRestaurantTaskRpcArguments(input)
       );
-      if (error) throw error;
+      if (error) throwRepositoryError(error, input.restaurantId);
       const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantTaskRow | null;
       if (!row) throw new Error("Task creation returned an empty response.");
       const dependencyIds = await loadRestaurantTaskDependencyIds(input.restaurantId.trim(), row.id);
@@ -2027,7 +2027,7 @@ export function createSupabaseRepository(): MiseRepository {
         "complete_restaurant_task",
         completeRestaurantTaskRpcArguments(input)
       );
-      if (error) throw error;
+      if (error) throwRepositoryError(error, input.restaurantId);
       const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantTaskRow | null;
       if (!row) throw new Error("Task completion returned an empty response.");
       const dependencyIds = await loadRestaurantTaskDependencyIds(input.restaurantId.trim(), row.id);
@@ -2043,7 +2043,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_restaurant_id: restaurantId,
         p_task_id: taskId
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantTaskRow | null;
       if (!row) throw new Error("Task reopen returned an empty response.");
       const dependencyIds = await loadRestaurantTaskDependencyIds(restaurantId, row.id);
