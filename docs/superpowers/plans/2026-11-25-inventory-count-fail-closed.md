@@ -57,19 +57,23 @@ node --test --import tsx tests/hubLoadState.test.ts
 
 Expected: FAIL in
 `inventory count hides stale session data and blocks start while the hub is not ready`
-because the screen still derives `visibleDetail` from `loadedRestaurantId`.
+because the pre-fix screen has no dedicated `hubLoadError` state, couples hub
+readiness to `Boolean(error)`, derives `visibleDetail` from `loadedRestaurantId`
+alone, and leaves the start panel and start button ungated on hub readiness.
 
 - [ ] **Step 3: Gate detail and the start button with shared readiness**
 
-In `app/inventory/count.tsx`, add `hubLoadError` state (reset on restaurant
-change and at load start, clear on successful load, set true only in the load
-`catch`), pass `loadError: hubLoadError` to the helper, and derive hub state
-before visible detail:
+In `app/inventory/count.tsx`:
+
+- Add `const [hubLoadError, setHubLoadError] = useState(false);`
+- In the restaurant-change `useEffect`, set `hubLoadError` to `false`
+- In `load()`: set `hubLoadError` to `false` when the load starts; set
+  `hubLoadError` to `false` after a successful fetch; in the load `catch`, set
+  `hubLoadError` to `true` only and do not clear cached `detail` or drafts
+- Pass `loadError: hubLoadError` into `resolveRestaurantScopedHubLoadState`
+- Derive hub state before visible detail:
 
 ```ts
-const [hubLoadError, setHubLoadError] = useState(false);
-// in load(): setHubLoadError(false) at start; setHubLoadError(false) on success;
-// in load() catch: setHubLoadError(true) only (do not clear cached detail/drafts)
 const hubLoadState = resolveRestaurantScopedHubLoadState({
   restaurantId: restaurant?.id,
   loadedRestaurantId,
@@ -84,23 +88,28 @@ const actionsEditable = presentRestaurantScopedHubActionsEditable({
 });
 ```
 
-Gate the start / no-session panel with `hubReady` and change the start button to:
+Replace the start-panel condition with:
 
 ```tsx
 {hubReady &&
 (!visibleDetail ||
   visibleDetail.session.status === "approved" ||
   visibleDetail.session.status === "cancelled") ? (
-  ...
-  <Button
-    title={t("inventory.count.startAction")}
-    onPress={() => void startSession()}
-    disabled={!actionsEditable}
-    fullWidth
-    accessibilityLabel={t("inventory.count.startAccessibility")}
-  />
-)}
 ```
+
+Replace the start-session control with:
+
+```tsx
+<Button
+  title={t("inventory.count.startAction")}
+  onPress={() => void startSession()}
+  disabled={!actionsEditable}
+  fullWidth
+  accessibilityLabel={t("inventory.count.startAccessibility")}
+/>
+```
+
+Render the in-progress session surface only when `hubReady && visibleDetail`.
 
 - [ ] **Step 4: Run the focused test and verify it passes**
 

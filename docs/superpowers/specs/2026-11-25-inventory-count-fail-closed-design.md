@@ -3,10 +3,11 @@
 ## Problem
 
 The inventory-count screen retains the last successful session detail during a
-soft refresh. Its shared hub state correctly becomes `error`, so mutations
-already no-op, but the screen still renders the cached count lines because
-`visibleDetail` checks only `loadedRestaurantId`. The start-session button also
-looks enabled during that error even though its handler refuses to run.
+soft refresh. Save and submit paths already guard on `actionsEditable`, but
+approve and cancel remained reachable because they depended on stale
+`visibleDetail` derived from `loadedRestaurantId` alone. The screen still
+rendered cached count lines while hub readiness was `error`. The start-session
+handler no-oped when not editable, but its button still looked enabled.
 
 This can make stale system quantities look authoritative beside a retry notice
 and makes an unavailable action appear interactive.
@@ -19,8 +20,9 @@ and makes an unavailable action appear interactive.
    the established restaurant-scoped screen contract and keeps the last
    successful response cached for a retry without rendering it as current.
 2. **Clear detail and drafts in the load-error handler.** This hides stale data,
-   but couples cache destruction to presentation state and discards useful
-   local values before a successful retry.
+   but clearing on load error immediately destroys local state and conflates
+   cache with presentation. A successful retry rehydrates from server values
+   rather than preserving in-memory drafts.
 3. **Introduce a new screen-specific async state machine.** This could encode
    loading, empty, ready, and error separately, but duplicates the shared hub
    state helper for a two-line behavior correction.
@@ -39,14 +41,16 @@ true. A soft-refresh load error will show the existing retry notice without
 stale session lines, progress, or approval controls, and cached `detail` and
 draft values are preserved in state rather than cleared in the load handler.
 
-The start / no-session panel renders only when `hubReady` is true and there is
-no active count surface to show (no open session, or approved/cancelled). During
-a genuine load error the panel is hidden so the screen does not imply there is
-no current count; the retry notice may be the only content below the screen
-chrome. The start button uses `actionsEditable` so it is visibly disabled
-during loading, hub load errors, insufficient permission, and mutations.
-Mutation and validation errors keep `hubReady` true so an in-progress session
-sheet remains visible while the operator corrects input.
+The start / no-session panel is absent while the hub is not ready (loading or
+hub load error). After a successful no-session load, the panel renders when
+`hubReady` is true and there is no active count surface to show (no open
+session, or approved/cancelled). During a genuine load error the panel stays
+hidden so the screen does not imply there is no current count; the retry notice
+may be the only content below the screen chrome. When the panel is shown, the
+start button uses `disabled={!actionsEditable}` so insufficient permission and
+in-flight mutations disable the control visibly. Mutation and validation errors
+keep `hubReady` true so an in-progress session sheet remains visible while the
+operator corrects input.
 
 No service API, repository, domain rule, schema, localization copy, or
 dependency changes are required.
