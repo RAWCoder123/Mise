@@ -171,6 +171,13 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
+  // Activity historically treated source like 'mise%' as actor_type=mise. No production
+  // inventory writer stamps that prefix; reject it so a manager JWT cannot move on-hand
+  // under forged Mise attribution. Hosted fixture seeds may still use mise-* labels when
+  // auth.uid() is null; the BEFORE INSERT trigger mirrors this authenticated-only rule.
+  if (input.source.trim().toLowerCase().startsWith("mise")) {
+    return "forged_mise_attribution_source";
+  }
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
   // A physical count observes the present, so it may not be effective in the future.
   // Mirrors the reject_future_dated_inventory_count database trigger.
