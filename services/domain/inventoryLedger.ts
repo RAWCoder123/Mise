@@ -1,4 +1,5 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
+import { validateWasteEvidence } from "./inventoryWasteEvidence";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
 export type InventoryEventType =
@@ -191,6 +192,12 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // Waste rewrites on-hand; require an allowlisted reason so analysis stays comparable.
+  const wasteEvidenceReason = validateWasteEvidence({
+    eventType: input.eventType,
+    reasonCode: input.reasonCode
+  });
+  if (wasteEvidenceReason) return wasteEvidenceReason;
   return null;
 }
 
