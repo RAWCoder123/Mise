@@ -167,10 +167,21 @@ export function projectInventoryEvents(
   };
 }
 
+/** Ad-hoc inventory waste / Waste record stamps this exact source. */
+export const OPERATOR_WASTE_SOURCE = "operator_waste" as const;
+
+const ALLOWED_WASTE_SOURCES = new Set<string>([OPERATOR_WASTE_SOURCE]);
+
 function validateEventInput(input: InventoryEventInput, recordedAt: string) {
   if (!input.restaurantId.trim() || !input.inventoryItemId.trim()) return "missing_scope";
   if (!input.clientEventId.trim() || !input.idempotencyKey.trim()) return "missing_idempotency";
   if (!input.source.trim()) return "missing_source";
+  // Waste may only claim the production write-path label. Arbitrary sources still
+  // move on-hand and enter waste analysis / Activity under forged provenance.
+  // Exact trim match keeps case variants from bypassing the hosted allowlist.
+  if (input.eventType === "waste" && !ALLOWED_WASTE_SOURCES.has(input.source.trim())) {
+    return "unsupported_waste_source";
+  }
   if (!Number.isFinite(new Date(input.effectiveAt).getTime())) return "invalid_effective_at";
   // A physical count observes the present, so it may not be effective in the future.
   // Mirrors the reject_future_dated_inventory_count database trigger.
