@@ -1,4 +1,5 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
+import { validateOtherReasonNoteEvidence } from "./inventoryOtherReasonNoteEvidence";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
 export type InventoryEventType =
@@ -191,6 +192,15 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // Catch-all reason `other` is not comparable without a free-text note.
+  // Named waste/stockout reasons stay note-optional; source/reason allowlists
+  // remain with their own tips (#1265/#1266/#1270/#1271).
+  const otherReasonNoteEvidence = validateOtherReasonNoteEvidence({
+    eventType: input.eventType,
+    reasonCode: input.reasonCode,
+    metadata: input.metadata
+  });
+  if (otherReasonNoteEvidence) return otherReasonNoteEvidence;
   return null;
 }
 
