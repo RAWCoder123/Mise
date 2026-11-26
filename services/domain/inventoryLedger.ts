@@ -1,4 +1,5 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
+import { validateActorUserIdEvidence } from "./inventoryActorUserIdEvidence";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
 export type InventoryEventType =
@@ -60,8 +61,14 @@ export interface InventoryProjection {
 export function acceptInventoryEvent(input: {
   existingEvents: readonly InventoryEvent[];
   candidate: InventoryEventInput;
-  authority: { id: string; actorUserId: string; recordedAt: string };
+  authority: { id: string; actorUserId: string | null; recordedAt: string };
 }): InventoryEventAcceptance {
+  // Insert-time actor attribution is required; anonymization may null later.
+  const actorEvidence = validateActorUserIdEvidence({
+    actorUserId: input.authority.actorUserId
+  });
+  if (actorEvidence) return { status: "rejected", reason: actorEvidence };
+
   const invalidReason = validateEventInput(input.candidate, input.authority.recordedAt);
   if (invalidReason) return { status: "rejected", reason: invalidReason };
 
