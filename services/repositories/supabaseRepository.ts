@@ -1919,7 +1919,7 @@ export function createSupabaseRepository(): MiseRepository {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (integration.error) throw integration.error;
+      if (integration.error) throwRepositoryError(integration.error, restaurantId);
       if (integration.data) {
         const normalized = normalizePosIntegration(integration.data as PosIntegration);
         const provider = normalizePosProviderFromIntegration(normalized.provider);
@@ -1937,7 +1937,7 @@ export function createSupabaseRepository(): MiseRepository {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
 
       const provider = normalizePosProvider(data?.source_pos);
       return {

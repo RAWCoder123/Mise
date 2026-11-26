@@ -34,9 +34,13 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
   let allowTaskRows = false;
   let allowDeliveryRows = false;
   let allowCountSessionRows = false;
+  let allowPosIntegrationRows = false;
   const fakeClient = {
     from(table: string) {
       if (allowTaskRows && table === "restaurant_tasks") return settledQuery([], null);
+      if (allowPosIntegrationRows && table === "pos_integrations") {
+        return settledQuery(null, null);
+      }
       if (allowDeliveryRows && table === "supplier_deliveries") {
         return settledQuery(
           [
@@ -126,10 +130,15 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
             taskId: "task-1",
             completionResult: "Count verified"
           }),
-        () => repository.reopenRestaurantTask(restaurantId, "task-1")
+        () => repository.reopenRestaurantTask(restaurantId, "task-1"),
+        () => repository.fetchPOSStatus(restaurantId)
       ]) {
         await assertAuthorizationNotification(operation);
       }
+
+      allowPosIntegrationRows = true;
+      await assertAuthorizationNotification(() => repository.fetchPOSStatus(restaurantId));
+      allowPosIntegrationRows = false;
 
       allowDeliveryRows = true;
       await assertAuthorizationNotification(() =>
@@ -189,7 +198,7 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       unsubscribe();
     }
 
-    assert.equal(notifications.length, 27);
+    assert.equal(notifications.length, 29);
     assert.ok(notifications.every((deniedRestaurantId) => deniedRestaurantId === restaurantId));
   } finally {
     delete require.cache[repositoryPath];
