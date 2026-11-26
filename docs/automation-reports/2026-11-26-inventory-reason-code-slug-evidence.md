@@ -45,9 +45,10 @@ taxonomies, or rewrite legacy rows.
 
 ## Verification
 
-- `npm run typecheck`
-- focused reason-code-slug suite
-- `npm test`
-- `npm run security:static`
-- `npm run security:backend`
-- `npm run design:static`
+- `npm run typecheck` — passed
+- focused reason-code-slug suite — 7/7 passed
+- `npm test` — 683 passed / 0 fail / 7 cancelled (inherited)
+- `npm run security:static` — passed
+- `npm run security:backend` — passed
+- `npm run design:static` — passed
+- `npm run supabase:test` — not run in this environment
