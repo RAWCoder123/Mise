@@ -84,7 +84,8 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
       quantity: -100,
       clientEventId: "device-event-2",
       idempotencyKey: "correction:event-1",
-      supersedesEventId: "event-1"
+      supersedesEventId: "event-1",
+      metadata: { note: "Fix receiving error" }
     }),
     "event-2"
   );
@@ -95,7 +96,8 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
       quantity: -50,
       clientEventId: "device-event-3",
       idempotencyKey: "correction:event-1:again",
-      supersedesEventId: "event-1"
+      supersedesEventId: "event-1",
+      metadata: { note: "Duplicate correction attempt" }
     }),
     authority: {
       id: "event-3",
@@ -139,7 +141,8 @@ test("projects counts, receipts, usage, waste, and corrections in server sequenc
       quantity: -100,
       clientEventId: "correction-1",
       idempotencyKey: "correction-1",
-      supersedesEventId: "event-2"
+      supersedesEventId: "event-2",
+      metadata: { note: "Adjust overstated receipt" }
     }),
     "event-4"
   );
