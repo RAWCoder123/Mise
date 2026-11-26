@@ -37,10 +37,10 @@ land.
 
 ## Verification
 
-- `npm run typecheck`
-- focused transfer-reason suite
-- `npm test`
-- `npm run security:static`
-- `npm run security:backend`
-- `npm run design:static`
-- `npm run supabase:test` (may be unavailable without Docker in this environment)
+- `npm run typecheck` — passed
+- focused transfer-reason suite — 8/8 passed
+- `npm test` — 684 passed / 0 fail / 7 cancelled (inherited)
+- `npm run security:static` — passed
+- `npm run security:backend` — passed
+- `npm run design:static` — passed
+- `npm run supabase:test` — not run in this environment
