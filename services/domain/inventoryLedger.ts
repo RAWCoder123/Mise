@@ -1,4 +1,5 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
+import { validateTransferReasonEvidence } from "./inventoryTransferReasonEvidence";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
 export type InventoryEventType =
@@ -191,6 +192,13 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // Transfers rewrite on-hand under current projection unless quantity is zero;
+  // require an allowlisted reason so station-transfer provenance stays comparable.
+  const transferReasonEvidence = validateTransferReasonEvidence({
+    eventType: input.eventType,
+    reasonCode: input.reasonCode
+  });
+  if (transferReasonEvidence) return transferReasonEvidence;
   return null;
 }
 
