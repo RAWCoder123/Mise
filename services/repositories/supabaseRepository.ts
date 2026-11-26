@@ -1765,7 +1765,7 @@ export function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .eq("provider", "square")
         .maybeSingle();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return data ? normalizePosIntegration(data as PosIntegration) : null;
     },
 
@@ -1773,7 +1773,7 @@ export function createSupabaseRepository(): MiseRepository {
       const { data, error } = await client.rpc("list_pos_catalog_mapping_reviews", {
         p_restaurant_id: restaurantId
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return parsePosMappingReviewQueue(data, restaurantId);
     },
 

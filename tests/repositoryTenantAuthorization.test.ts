@@ -177,7 +177,9 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
             completionResult: "Count verified"
           }),
         () => repository.reopenRestaurantTask(restaurantId, "task-1"),
-        () => repository.fetchPOSStatus(restaurantId)
+        () => repository.fetchPOSStatus(restaurantId),
+        () => repository.fetchSquarePosIntegration(restaurantId),
+        () => repository.fetchPosMappingReviewQueue(restaurantId)
       ]) {
         await assertAuthorizationNotification(operation);
       }
@@ -244,7 +246,7 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       unsubscribe();
     }
 
-    assert.equal(notifications.length, 35);
+    assert.equal(notifications.length, 37);
     assert.ok(notifications.every((deniedRestaurantId) => deniedRestaurantId === restaurantId));
   } finally {
     delete require.cache[repositoryPath];
