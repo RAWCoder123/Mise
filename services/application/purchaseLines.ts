@@ -3,6 +3,7 @@ import type {
   PurchaseLineSource
 } from "../domain/purchaseLines";
 import { markCurrentPurchaseLines, normalizePurchaseLineInput } from "../domain/purchaseLines";
+import { validatePurchaseLineSourceDocumentReferenceEvidence } from "../domain/purchaseLineSourceDocumentReferenceEvidence";
 import { getMiseRepository } from "./repository";
 
 const repository = getMiseRepository();
@@ -26,6 +27,14 @@ export async function ingestPurchaseLines(input: {
   supplierId?: string | null;
   correlationId?: string | null;
 }) {
+  // Fail closed on blank/padded document refs so application ingest matches the
+  // append-only ledger tip. Hosted ingest_purchase_lines still nullif-trims.
+  const documentReferenceShape = validatePurchaseLineSourceDocumentReferenceEvidence({
+    sourceDocumentReference: input.sourceDocumentReference
+  });
+  if (documentReferenceShape) {
+    throw new Error("A source document reference is required.");
+  }
   const sourceDocumentReference = input.sourceDocumentReference.trim();
   if (!sourceDocumentReference) {
     throw new Error("A source document reference is required.");
