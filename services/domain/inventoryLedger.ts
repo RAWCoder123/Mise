@@ -1,3 +1,4 @@
+import { validateCorrectionEvidence } from "./inventoryCorrectionEvidence";
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
@@ -191,6 +192,13 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // Corrections are audited repairs. Product writers (#345/#350) stamp a required
+  // operator note; reject note-less corrections so on-hand moves stay explainable.
+  const correctionEvidenceReason = validateCorrectionEvidence({
+    eventType: input.eventType,
+    metadata: input.metadata
+  });
+  if (correctionEvidenceReason) return correctionEvidenceReason;
   return null;
 }
 
