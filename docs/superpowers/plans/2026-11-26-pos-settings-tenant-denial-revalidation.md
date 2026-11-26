@@ -27,7 +27,7 @@
 - Consumes: `throwRepositoryError(error: unknown, restaurantId: string | null): never`
 - Produces: unchanged `fetchSquarePosIntegration(restaurantId)` and `fetchPosMappingReviewQueue(restaurantId)` repository contracts with tenant-denial notification.
 
-- [ ] **Step 1: Write the failing regression**
+- [x] **Step 1: Write the failing regression**
 
 Add both calls to the authorization-notification operation table:
 
@@ -38,7 +38,7 @@ Add both calls to the authorization-notification operation table:
 
 Update the final exact notification count from `35` to `37`.
 
-- [ ] **Step 2: Run the focused test and observe red**
+- [x] **Step 2: Run the focused test and observe red**
 
 Run:
 
@@ -48,7 +48,7 @@ npx tsx --test tests/repositoryTenantAuthorization.test.ts
 
 Expected: the first newly covered POS-settings denial rethrows the original error but fails the `notificationsBeforeOperation + 1` assertion because no notification was emitted.
 
-- [ ] **Step 3: Route both errors through the shared boundary**
+- [x] **Step 3: Route both errors through the shared boundary**
 
 Replace each plain rethrow with:
 
@@ -56,7 +56,7 @@ Replace each plain rethrow with:
 if (error) throwRepositoryError(error, restaurantId);
 ```
 
-- [ ] **Step 4: Run focused and proportional verification**
+- [x] **Step 4: Run focused and proportional verification**
 
 Run:
 
@@ -71,7 +71,7 @@ git diff --check
 
 Expected: all focused tests, typecheck, full unit suite, security checks, and whitespace validation pass.
 
-- [ ] **Step 5: Commit the narrow change**
+- [x] **Step 5: Commit the narrow change**
 
 ```bash
 git add docs/superpowers/plans/2026-11-26-pos-settings-tenant-denial-revalidation.md \

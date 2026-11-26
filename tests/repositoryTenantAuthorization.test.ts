@@ -63,8 +63,14 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
   let allowDeliveryRows = false;
   let allowCountSessionRows = false;
   let allowPosIntegrationRows = false;
+  const tableOverrides = new Map<string, { data: unknown; error: unknown }>();
+  const rpcOverrides = new Map<string, { data: unknown; error: unknown }>();
+  const clientCalls: string[] = [];
   const fakeClient = {
     from(table: string) {
+      clientCalls.push(`table:${table}`);
+      const override = tableOverrides.get(table);
+      if (override) return settledQuery(override.data, override.error);
       if (allowTaskRows && table === "restaurant_tasks") return settledQuery([], null);
       if (allowPosIntegrationRows && table === "pos_integrations") {
         return settledQuery(null, null);
@@ -90,7 +96,10 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       }
       return settledQuery(null, repositoryError);
     },
-    rpc() {
+    rpc(functionName: string) {
+      clientCalls.push(`rpc:${functionName}`);
+      const override = rpcOverrides.get(functionName);
+      if (override) return Promise.resolve(override);
       return Promise.resolve(
         rejectRpc
           ? { data: null, error: repositoryError }
@@ -225,6 +234,238 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
         await assertAuthorizationNotification(operation);
       }
 
+      const bundleRestaurant = {
+        id: restaurantId,
+        name: "Bundle Restaurant",
+        timezone: "America/Chicago"
+      };
+      const verifiedProviderMappingRow = {
+        restaurant_id: restaurantId,
+        external_catalog_item_id: "catalog-1",
+        external_variation_id: "variation-1",
+        menu_item_id: "menu-item-1",
+        verification_status: "verified",
+        effective_from: "2020-01-01T00:00:00.000Z",
+        effective_to: null,
+        pos_locations: {
+          external_location_id: "location-1",
+          status: "active",
+          pos_integrations: { provider: "square", status: "connected" }
+        },
+        menu_items: { active: true }
+      };
+      const healthyBundleTables: Record<string, unknown> = {
+        restaurants: bundleRestaurant,
+        pos_integrations: [],
+        supplier_items: [],
+        ai_insights: [],
+        inventory_items: [],
+        purchase_recommendations: [],
+        insights: [],
+        menu_item_ingredients: [],
+        pos_catalog_item_mappings: [verifiedProviderMappingRow]
+      };
+      const configureBundleResults = (
+        failures: { tables?: Record<string, unknown>; rpcs?: Record<string, unknown> } = {}
+      ) => {
+        tableOverrides.clear();
+        rpcOverrides.clear();
+        for (const [table, data] of Object.entries(healthyBundleTables)) {
+          tableOverrides.set(table, { data, error: null });
+        }
+        rpcOverrides.set("fetch_planning_sales", { data: [], error: null });
+        for (const [table, error] of Object.entries(failures.tables ?? {})) {
+          tableOverrides.set(table, { data: null, error });
+        }
+        for (const [functionName, error] of Object.entries(failures.rpcs ?? {})) {
+          rpcOverrides.set(functionName, { data: null, error });
+        }
+        clientCalls.length = 0;
+      };
+      const authorizationDenial = (label: string) => ({
+        code: "42501",
+        message: `permission denied for ${label}`
+      });
+      const assertBundleDenial = async (
+        operation: () => Promise<unknown>,
+        failures: { tables?: Record<string, unknown>; rpcs?: Record<string, unknown> },
+        expectedError: unknown,
+        expectedCalls: string[],
+        unreachedCalls: string[]
+      ) => {
+        configureBundleResults(failures);
+        const notificationsBeforeBundle = notifications.length;
+        await assert.rejects(operation(), (error) => error === expectedError);
+        assert.equal(notifications.length, notificationsBeforeBundle + 1);
+        assert.equal(notifications[notifications.length - 1], restaurantId);
+        for (const call of expectedCalls) assert.ok(clientCalls.includes(call), call);
+        for (const call of unreachedCalls) assert.ok(!clientCalls.includes(call), call);
+      };
+      const assertBundleNonAuthorizationFailure = async (
+        operation: () => Promise<unknown>,
+        failures: { tables?: Record<string, unknown>; rpcs?: Record<string, unknown> },
+        expectedError: unknown
+      ) => {
+        configureBundleResults(failures);
+        const notificationsBeforeBundle = notifications.length;
+        await assert.rejects(operation(), (error) => error === expectedError);
+        assert.equal(notifications.length, notificationsBeforeBundle);
+      };
+
+      const opsProfileTables = ["restaurants", "pos_integrations", "supplier_items", "ai_insights"];
+      for (const table of opsProfileTables) {
+        const denial = authorizationDenial(`ops profile ${table}`);
+        await assertBundleDenial(
+          () => repository.fetchRestaurantOpsProfile(restaurantId),
+          { tables: { [table]: denial } },
+          denial,
+          opsProfileTables.map((name) => `table:${name}`),
+          []
+        );
+      }
+      const firstOpsDenial = authorizationDenial("ops profile restaurants first");
+      await assertBundleDenial(
+        () => repository.fetchRestaurantOpsProfile(restaurantId),
+        {
+          tables: {
+            restaurants: firstOpsDenial,
+            pos_integrations: authorizationDenial("ops profile pos second"),
+            supplier_items: authorizationDenial("ops profile supplier second"),
+            ai_insights: authorizationDenial("ops profile insights second")
+          }
+        },
+        firstOpsDenial,
+        opsProfileTables.map((name) => `table:${name}`),
+        []
+      );
+
+      const restaurantDataResultTables = [
+        "restaurants",
+        "inventory_items",
+        "purchase_recommendations",
+        "insights",
+        "menu_item_ingredients"
+      ];
+      for (const table of restaurantDataResultTables) {
+        const denial = authorizationDenial(`restaurant data ${table}`);
+        await assertBundleDenial(
+          () => repository.fetchRestaurantData(restaurantId),
+          { tables: { [table]: denial } },
+          denial,
+          ["rpc:fetch_planning_sales", ...restaurantDataResultTables.map((name) => `table:${name}`)],
+          ["table:pos_catalog_item_mappings"]
+        );
+      }
+      const restaurantDataSalesDenial = authorizationDenial("restaurant data planning sales");
+      await assertBundleDenial(
+        () => repository.fetchRestaurantData(restaurantId),
+        {
+          tables: { restaurants: authorizationDenial("restaurant data restaurants after sales") },
+          rpcs: { fetch_planning_sales: restaurantDataSalesDenial }
+        },
+        restaurantDataSalesDenial,
+        ["rpc:fetch_planning_sales"],
+        ["table:pos_catalog_item_mappings"]
+      );
+      const restaurantDataMappingDenial = authorizationDenial("restaurant data provider mappings");
+      await assertBundleDenial(
+        () => repository.fetchRestaurantData(restaurantId),
+        { tables: { pos_catalog_item_mappings: restaurantDataMappingDenial } },
+        restaurantDataMappingDenial,
+        [
+          "rpc:fetch_planning_sales",
+          ...restaurantDataResultTables.map((name) => `table:${name}`),
+          "table:pos_catalog_item_mappings"
+        ],
+        []
+      );
+
+      const planningDataResultTables = ["inventory_items", "menu_item_ingredients", "restaurants"];
+      for (const table of planningDataResultTables) {
+        const denial = authorizationDenial(`planning data ${table}`);
+        await assertBundleDenial(
+          () => repository.fetchPlanningData(restaurantId),
+          { tables: { [table]: denial } },
+          denial,
+          ["rpc:fetch_planning_sales", ...planningDataResultTables.map((name) => `table:${name}`)],
+          ["table:pos_catalog_item_mappings"]
+        );
+      }
+      const planningDataSalesDenial = authorizationDenial("planning data planning sales");
+      await assertBundleDenial(
+        () => repository.fetchPlanningData(restaurantId),
+        {
+          tables: { inventory_items: authorizationDenial("planning data inventory after sales") },
+          rpcs: { fetch_planning_sales: planningDataSalesDenial }
+        },
+        planningDataSalesDenial,
+        ["rpc:fetch_planning_sales"],
+        ["table:pos_catalog_item_mappings"]
+      );
+      const planningDataMappingDenial = authorizationDenial("planning data provider mappings");
+      await assertBundleDenial(
+        () => repository.fetchPlanningData(restaurantId),
+        { tables: { pos_catalog_item_mappings: planningDataMappingDenial } },
+        planningDataMappingDenial,
+        [
+          "rpc:fetch_planning_sales",
+          ...planningDataResultTables.map((name) => `table:${name}`),
+          "table:pos_catalog_item_mappings"
+        ],
+        []
+      );
+
+      const verifiedMappingsDenial = authorizationDenial("verified provider mappings");
+      await assertBundleDenial(
+        () => repository.fetchVerifiedProviderMappings!(restaurantId),
+        { tables: { pos_catalog_item_mappings: verifiedMappingsDenial } },
+        verifiedMappingsDenial,
+        ["table:pos_catalog_item_mappings"],
+        ["rpc:fetch_planning_sales"]
+      );
+
+      const bundleTimeout = new Error("temporary bundle database timeout");
+      for (const [operation, failures] of [
+        [() => repository.fetchRestaurantOpsProfile(restaurantId), { tables: { ai_insights: bundleTimeout } }],
+        [() => repository.fetchRestaurantData(restaurantId), { tables: { insights: bundleTimeout } }],
+        [() => repository.fetchRestaurantData(restaurantId), { rpcs: { fetch_planning_sales: bundleTimeout } }],
+        [() => repository.fetchRestaurantData(restaurantId), { tables: { pos_catalog_item_mappings: bundleTimeout } }],
+        [() => repository.fetchPlanningData(restaurantId), { tables: { restaurants: bundleTimeout } }],
+        [() => repository.fetchPlanningData(restaurantId), { rpcs: { fetch_planning_sales: bundleTimeout } }],
+        [() => repository.fetchPlanningData(restaurantId), { tables: { pos_catalog_item_mappings: bundleTimeout } }],
+        [() => repository.fetchVerifiedProviderMappings!(restaurantId), { tables: { pos_catalog_item_mappings: bundleTimeout } }]
+      ] as Array<[() => Promise<unknown>, { tables?: Record<string, unknown>; rpcs?: Record<string, unknown> }]>) {
+        await assertBundleNonAuthorizationFailure(operation, failures, bundleTimeout);
+      }
+
+      const notificationsBeforeHealthyBundles = notifications.length;
+      configureBundleResults();
+      const opsProfile = await repository.fetchRestaurantOpsProfile(restaurantId);
+      assert.equal(opsProfile.restaurant.id, restaurantId);
+      configureBundleResults();
+      const restaurantData = await repository.fetchRestaurantData(restaurantId);
+      assert.equal(restaurantData.restaurant.id, restaurantId);
+      assert.deepEqual(restaurantData.providerMappings, [
+        {
+          restaurantId,
+          sourcePos: "square",
+          providerLocationId: "location-1",
+          externalCatalogItemId: "catalog-1",
+          externalVariationId: "variation-1",
+          menuItemId: "menu-item-1"
+        }
+      ]);
+      assert.ok(clientCalls.includes("table:pos_catalog_item_mappings"));
+      configureBundleResults();
+      const planningData = await repository.fetchPlanningData(restaurantId);
+      assert.equal(planningData.timeZone, "America/Chicago");
+      assert.equal(planningData.providerMappings.length, 1);
+      configureBundleResults();
+      assert.equal((await repository.fetchVerifiedProviderMappings!(restaurantId)).length, 1);
+      assert.equal(notifications.length, notificationsBeforeHealthyBundles);
+      tableOverrides.clear();
+      rpcOverrides.clear();
+
       const nonAuthorizationError = new Error("temporary database timeout");
       repositoryError = nonAuthorizationError;
       rejectRpc = true;
@@ -246,7 +487,13 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       unsubscribe();
     }
 
-    assert.equal(notifications.length, 37);
+    const coreBundleDenialNotifications =
+      4 + 1 + // ops profile: four result checks plus first-denial-wins
+      5 + 1 + 1 + // restaurant data: result checks, planning-sales helper, mapping helper
+      3 + 1 + 1 + // planning data: result checks, planning-sales helper, mapping helper
+      1; // verified provider mappings public method
+    assert.equal(coreBundleDenialNotifications, 18);
+    assert.equal(notifications.length, 37 + coreBundleDenialNotifications);
     assert.ok(notifications.every((deniedRestaurantId) => deniedRestaurantId === restaurantId));
   } finally {
     delete require.cache[repositoryPath];
