@@ -16,6 +16,7 @@ function settledQuery(data: unknown, error: unknown) {
     query[method] = () => query;
   }
   query.maybeSingle = () => Promise.resolve(result);
+  query.single = () => Promise.resolve(result);
   query.then = (
     onFulfilled: (value: typeof result) => unknown,
     onRejected?: (reason: unknown) => unknown
@@ -31,9 +32,30 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
   let rejectRpc = true;
   let repositoryError: unknown = permissionError;
   let allowTaskRows = false;
+  let allowDeliveryRows = false;
+  let allowCountSessionRows = false;
   const fakeClient = {
     from(table: string) {
       if (allowTaskRows && table === "restaurant_tasks") return settledQuery([], null);
+      if (allowDeliveryRows && table === "supplier_deliveries") {
+        return settledQuery(
+          [
+            {
+              id: "delivery-1",
+              restaurant_id: restaurantId,
+              supplier_order_id: "order-1",
+              status: "received",
+              received_at: "2026-11-26T05:00:00.000Z",
+              notes: null,
+              created_at: "2026-11-26T05:00:00.000Z"
+            }
+          ],
+          null
+        );
+      }
+      if (allowCountSessionRows && table === "inventory_count_sessions") {
+        return settledQuery({ id: "count-session-1" }, null);
+      }
       return settledQuery(null, repositoryError);
     },
     rpc() {
@@ -66,12 +88,27 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       notifications.push(deniedRestaurantId);
     });
     const repository = createSupabaseRepository();
+    const assertAuthorizationNotification = async (operation: () => Promise<unknown>) => {
+      const notificationsBeforeOperation = notifications.length;
+      await assert.rejects(operation(), (error) => error === permissionError);
+      assert.equal(notifications.length, notificationsBeforeOperation + 1);
+    };
 
     try {
       for (const operation of [
         () => repository.fetchSupplierOrders(restaurantId),
         () => repository.fetchEmailConnectionState(restaurantId),
         () => repository.fetchPosIntegrations(restaurantId),
+        () => repository.fetchInventoryItems(restaurantId),
+        () => repository.fetchPurchaseRecommendations(restaurantId),
+        () => repository.fetchPurchaseRecommendationAuthorities(restaurantId),
+        () => repository.fetchRecommendationHistory(restaurantId),
+        () => repository.fetchPurchaseDecisionPatterns(restaurantId),
+        () => repository.fetchPurchaseLines(restaurantId),
+        () => repository.fetchPurchaseLineNetByItem(restaurantId),
+        () => repository.fetchSupplierDeliveryHistory(restaurantId),
+        () => repository.fetchSupplierOrder(restaurantId, "order-1"),
+        () => repository.fetchOpenInventoryCountSession(restaurantId),
         () => repository.listActivityEvents(restaurantId),
         () => repository.listMiseActions(restaurantId),
         () => repository.fetchSupplierSendAction!(restaurantId, "order-1"),
@@ -91,13 +128,24 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
           }),
         () => repository.reopenRestaurantTask(restaurantId, "task-1")
       ]) {
-        await assert.rejects(operation(), (error) => error === permissionError);
+        await assertAuthorizationNotification(operation);
       }
 
+      allowDeliveryRows = true;
+      await assertAuthorizationNotification(() =>
+        repository.fetchSupplierDeliveryHistory(restaurantId)
+      );
+      allowDeliveryRows = false;
+
+      allowCountSessionRows = true;
+      await assertAuthorizationNotification(() =>
+        repository.fetchOpenInventoryCountSession(restaurantId)
+      );
+      allowCountSessionRows = false;
+
       allowTaskRows = true;
-      await assert.rejects(
-        repository.listRestaurantTasks(restaurantId),
-        (error) => error === permissionError
+      await assertAuthorizationNotification(() =>
+        repository.listRestaurantTasks(restaurantId)
       );
       allowTaskRows = false;
 
@@ -117,7 +165,7 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
           }),
         () => repository.reopenRestaurantTask(restaurantId, "task-1")
       ]) {
-        await assert.rejects(operation(), (error) => error === permissionError);
+        await assertAuthorizationNotification(operation);
       }
 
       const nonAuthorizationError = new Error("temporary database timeout");
@@ -132,12 +180,16 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
         }),
         (error) => error === nonAuthorizationError
       );
+      await assert.rejects(
+        repository.fetchInventoryItems(restaurantId),
+        (error) => error === nonAuthorizationError
+      );
       assert.equal(notifications.length, notificationsBeforeNonAuthorizationFailure);
     } finally {
       unsubscribe();
     }
 
-    assert.equal(notifications.length, 15);
+    assert.equal(notifications.length, 27);
     assert.ok(notifications.every((deniedRestaurantId) => deniedRestaurantId === restaurantId));
   } finally {
     delete require.cache[repositoryPath];

@@ -1143,7 +1143,7 @@ export function createSupabaseRepository(): MiseRepository {
         .select(inventorySupplierSelect)
         .eq("restaurant_id", restaurantId)
         .order("item_name");
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return (data ?? []).map((row) =>
         normalizeInventoryItem(withCurrentSupplierDisplay(row, "Inventory item") as unknown as InventoryItem)
       );
@@ -1489,7 +1489,7 @@ export function createSupabaseRepository(): MiseRepository {
         .order("created_at", { ascending: false });
       if (status !== "all") query = query.eq("status", status);
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return (data ?? []).map((row) =>
         normalizePurchaseRecommendation(
           withCurrentSupplierDisplay(row, "Purchase recommendation") as unknown as PurchaseRecommendation
@@ -1501,7 +1501,7 @@ export function createSupabaseRepository(): MiseRepository {
       const { data, error } = await client.rpc("list_purchase_recommendation_authority", {
         p_restaurant_id: restaurantId
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       if (!data || typeof data !== "object" || Array.isArray(data)) {
         throw new Error("Purchase authority returned an invalid response.");
       }
@@ -1520,7 +1520,7 @@ export function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .gte("created_at", recommendationHistoryCutoffIso())
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return (data ?? []).map((row) =>
         normalizePurchaseRecommendation(
           withCurrentSupplierDisplay(row, "Purchase recommendation") as unknown as PurchaseRecommendation
@@ -1572,7 +1572,7 @@ export function createSupabaseRepository(): MiseRepository {
       const { data, error } = await client.rpc("list_purchase_decision_patterns", {
         p_restaurant_id: restaurantId
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as Record<string, unknown>[]).map(normalizePurchaseDecisionPattern);
     },
 
@@ -1606,7 +1606,7 @@ export function createSupabaseRepository(): MiseRepository {
         .order("transaction_date", { ascending: false })
         .order("line_index", { ascending: true })
         .limit(limit);
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as Record<string, unknown>[]).map(normalizePurchaseLineRow);
     },
 
@@ -1625,7 +1625,7 @@ export function createSupabaseRepository(): MiseRepository {
       const { data, error } = await client.rpc("list_purchase_line_net_by_item", {
         p_restaurant_id: restaurantId
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as Record<string, unknown>[]).map(normalizePurchaseLineNetRow);
     },
 
@@ -1650,7 +1650,7 @@ export function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .order("received_at", { ascending: false })
         .limit(100);
-      if (deliveryError) throw deliveryError;
+      if (deliveryError) throwRepositoryError(deliveryError, restaurantId);
 
       const deliveries = ((deliveryRows ?? []) as SupplierDeliveryRecord[]).map(
         normalizeSupplierDeliveryRecord
@@ -1665,7 +1665,7 @@ export function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .in("delivery_id", deliveries.map((delivery) => delivery.id))
         .limit(1000);
-      if (itemError) throw itemError;
+      if (itemError) throwRepositoryError(itemError, restaurantId);
 
       return {
         deliveries,
@@ -1682,7 +1682,7 @@ export function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
         .single();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return normalizeSupplierOrder(data as SupplierOrder);
     },
 
@@ -2302,7 +2302,7 @@ export function createSupabaseRepository(): MiseRepository {
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       if (!session) return null;
       const { data: lines, error: linesError } = await client
         .from("inventory_count_lines")
@@ -2310,7 +2310,7 @@ export function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .eq("session_id", session.id)
         .order("item_name", { ascending: true });
-      if (linesError) throw linesError;
+      if (linesError) throwRepositoryError(linesError, restaurantId);
       return normalizeInventoryCountSessionDetail({
         session: session as InventoryCountSessionDetail["session"],
         lines: (lines ?? []) as InventoryCountLine[]
