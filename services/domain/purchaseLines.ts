@@ -9,6 +9,8 @@
  * vocabularies and rules stay in step.
  */
 
+import { validatePurchaseLineConsistencyFlagsEvidence } from "./purchaseLineConsistencyFlagsEvidence";
+
 export const PURCHASE_LINE_EVIDENCE_VERSION = "mise.purchase_line.v1" as const;
 export const PURCHASE_LINE_NORMALIZATION_VERSION =
   "mise.purchase_line_normalization.v1" as const;
@@ -451,17 +453,42 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
   }
   const statedPackSize = optionalBoundedText(input.packSize, "Pack size", 80);
   const packSize = statedPackSize ?? extractedPackSize;
+  const transactionDate = isoDate(input.transactionDate, "Transaction date");
+  const receivedDate = input.receivedDate ? isoDate(input.receivedDate, "Received date") : null;
   const consistencyFlags = computePurchaseLineConsistencyFlags({
     quantity,
     unitOfMeasure,
     packSize,
     unitPrice,
     extendedPrice,
-    transactionDate: isoDate(input.transactionDate, "Transaction date"),
-    receivedDate: input.receivedDate ? isoDate(input.receivedDate, "Received date") : null,
+    transactionDate,
+    receivedDate,
     statedPackSize,
     describedPackSize: extractedPackSize
   });
+  // Fail closed when ingest-shape flags disagree with the durable stored-shape
+  // reconstruction the append-only ledger tip enforces (stated stand-in =
+  // coalesced pack_size, described = extract(raw)). Product normalize
+  // recomputes both, so this is the contract pin rather than a new ceiling.
+  const expectedStoredFlags = computePurchaseLineConsistencyFlags({
+    quantity,
+    unitOfMeasure,
+    packSize,
+    unitPrice,
+    extendedPrice,
+    transactionDate,
+    receivedDate,
+    statedPackSize: packSize,
+    describedPackSize: extractedPackSize
+  });
+  if (
+    validatePurchaseLineConsistencyFlagsEvidence({
+      consistencyFlags,
+      expectedConsistencyFlags: expectedStoredFlags
+    })
+  ) {
+    throw new Error("Consistency flags must match the recorded line evidence.");
+  }
   return {
     lineIndex: input.lineIndex,
     lineType: input.lineType,
@@ -475,8 +502,8 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
     unitPrice,
     extendedPrice,
     currency,
-    transactionDate: isoDate(input.transactionDate, "Transaction date"),
-    receivedDate: input.receivedDate ? isoDate(input.receivedDate, "Received date") : null,
+    transactionDate,
+    receivedDate,
     consistencyFlags,
     statedConfidence: input.parseConfidence,
     parseConfidence: resolvePurchaseLineConfidence({
