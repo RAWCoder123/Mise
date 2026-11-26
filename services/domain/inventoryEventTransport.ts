@@ -211,6 +211,14 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "evidence" substring so correction-reason failures
+  // settle as terminal outbox reasons instead of incomplete_evidence.
+  if (message.includes("correction events require a reason code")) {
+    return "correction_requires_reason";
+  }
+  if (message.includes("correction reason code is not allowed")) {
+    return "invalid_correction_reason";
+  }
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
