@@ -211,6 +211,11 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "evidence" substring so reason_code slug failures
+  // settle as terminal outbox reasons instead of incomplete_evidence.
+  if (message.includes("reason code must be a slug")) {
+    return "invalid_reason_code_shape";
+  }
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";

@@ -1,4 +1,5 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
+import { validateReasonCodeSlugEvidence } from "./inventoryReasonCodeSlugEvidence";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
 export type InventoryEventType =
@@ -191,6 +192,11 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // When present, reason_code must be a comparable lowercase snake slug.
+  const reasonCodeSlugEvidence = validateReasonCodeSlugEvidence({
+    reasonCode: input.reasonCode
+  });
+  if (reasonCodeSlugEvidence) return reasonCodeSlugEvidence;
   return null;
 }
 
