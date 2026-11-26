@@ -9,6 +9,8 @@
  * vocabularies and rules stay in step.
  */
 
+import { validatePurchaseLineRawItemDescriptionEvidence } from "./purchaseLineRawDescriptionEvidence";
+
 export const PURCHASE_LINE_EVIDENCE_VERSION = "mise.purchase_line.v1" as const;
 export const PURCHASE_LINE_NORMALIZATION_VERSION =
   "mise.purchase_line_normalization.v1" as const;
@@ -431,6 +433,13 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
   const creditsLineId = input.creditsLineId?.trim() || null;
   if (creditsLineId !== null && input.lineType !== "credit") {
     throw new Error("Only a credit line may reference the line it offsets.");
+  }
+  // Fail closed on blank/padded descriptions so product ingest matches the
+  // append-only ledger tip. Hosted purchase_line_text still btrims.
+  if (validatePurchaseLineRawItemDescriptionEvidence({
+    rawItemDescription: input.rawItemDescription
+  })) {
+    throw new Error("Raw item description must be non-blank and unpadded.");
   }
   const rawItemDescription = boundedText(input.rawItemDescription, "Raw item description", 500);
   const {
