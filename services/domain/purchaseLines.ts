@@ -9,6 +9,11 @@
  * vocabularies and rules stay in step.
  */
 
+import {
+  validatePurchaseLinePackSizeEvidence,
+  validatePurchaseLineUnitOfMeasureEvidence
+} from "./purchaseLineUnitPackEvidence";
+
 export const PURCHASE_LINE_EVIDENCE_VERSION = "mise.purchase_line.v1" as const;
 export const PURCHASE_LINE_NORMALIZATION_VERSION =
   "mise.purchase_line_normalization.v1" as const;
@@ -439,6 +444,15 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
     packSize: extractedPackSize
   } = normalizePurchaseLineDescription(rawItemDescription);
   const quantity = optionalAmount(input.quantity, "Quantity", MAX_QUANTITY);
+  // Fail closed on padded unit/pack labels so product ingest matches the
+  // append-only ledger tip. Soft-empty still nullifies via optionalBoundedText.
+  // Hosted purchase_line_text still btrims.
+  if (validatePurchaseLineUnitOfMeasureEvidence({ unitOfMeasure: input.unitOfMeasure })) {
+    throw new Error("Unit of measure must be unpadded when present.");
+  }
+  if (validatePurchaseLinePackSizeEvidence({ packSize: input.packSize })) {
+    throw new Error("Pack size must be unpadded when present.");
+  }
   const unitOfMeasure = optionalBoundedText(input.unitOfMeasure, "Unit of measure", 80);
   const unitPrice = optionalAmount(input.unitPrice, "Unit price", MAX_QUANTITY);
   const extendedPrice = optionalAmount(input.extendedPrice, "Extended price", MAX_EXTENDED_PRICE);
