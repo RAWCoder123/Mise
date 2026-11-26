@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import test from "node:test";
+import { isTenantAuthorizationError } from "../services/tenantAuthorizationEvents";
 
 const require = createRequire(import.meta.url);
 const restaurantId = "restaurant-tenant-denial";
@@ -8,6 +9,33 @@ const permissionError = {
   code: "42501",
   message: "permission denied for restaurant workspace"
 };
+
+test("tenant authorization errors recognize every supported denial shape", () => {
+  for (const error of [
+    { status: 401 },
+    { status: 403 },
+    { context: { status: 401 } },
+    { context: { status: 403 } },
+    { code: "42501" },
+    { code: "PGRST301" },
+    { message: "Permission denied for relation inventory_items" },
+    { message: "Access denied for this restaurant" },
+    { message: "Not authenticated" },
+    { message: "Invalid or expired user session" }
+  ]) {
+    assert.equal(isTenantAuthorizationError(error), true);
+  }
+
+  for (const error of [
+    null,
+    new Error("temporary database timeout"),
+    { status: 500 },
+    { code: "23505" },
+    { message: "not authorized for this operation" }
+  ]) {
+    assert.equal(isTenantAuthorizationError(error), false);
+  }
+});
 
 function settledQuery(data: unknown, error: unknown) {
   const result = { data, error };
@@ -103,6 +131,8 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
         () => repository.fetchSupplierOrders(restaurantId),
         () => repository.fetchEmailConnectionState(restaurantId),
         () => repository.fetchPosIntegrations(restaurantId),
+        () => repository.fetchAiInsights(restaurantId),
+        () => repository.fetchInsights(restaurantId),
         () => repository.fetchInventoryItems(restaurantId),
         () => repository.fetchPurchaseRecommendations(restaurantId),
         () => repository.fetchPurchaseRecommendationAuthorities(restaurantId),
@@ -214,7 +244,7 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       unsubscribe();
     }
 
-    assert.equal(notifications.length, 33);
+    assert.equal(notifications.length, 35);
     assert.ok(notifications.every((deniedRestaurantId) => deniedRestaurantId === restaurantId));
   } finally {
     delete require.cache[repositoryPath];

@@ -1051,7 +1051,7 @@ export function createSupabaseRepository(): MiseRepository {
         .select("*")
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as AiInsight[]).map(normalizeAiInsight);
     },
 
@@ -1825,7 +1825,7 @@ export function createSupabaseRepository(): MiseRepository {
         .select("*")
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as Insight[]).map(normalizeInsight);
     },
 
