@@ -1041,7 +1041,7 @@ export function createSupabaseRepository(): MiseRepository {
         .select("*")
         .eq("restaurant_id", restaurantId)
         .order("updated_at", { ascending: false });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as PosIntegration[]).map(normalizePosIntegration);
     },
 
@@ -1639,7 +1639,7 @@ export function createSupabaseRepository(): MiseRepository {
         .select("*")
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return ((data ?? []) as SupplierOrder[]).map(normalizeSupplierOrder);
     },
 
@@ -1844,7 +1844,7 @@ export function createSupabaseRepository(): MiseRepository {
         .eq("restaurant_id", restaurantId)
         .eq("provider", "gmail")
         .maybeSingle();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return data ? normalizeRestaurantEmailConnection(data as RestaurantEmailConnection) : null;
     },
 

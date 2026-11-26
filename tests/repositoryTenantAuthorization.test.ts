@@ -69,6 +69,9 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
 
     try {
       for (const operation of [
+        () => repository.fetchSupplierOrders(restaurantId),
+        () => repository.fetchEmailConnectionState(restaurantId),
+        () => repository.fetchPosIntegrations(restaurantId),
         () => repository.listActivityEvents(restaurantId),
         () => repository.listMiseActions(restaurantId),
         () => repository.fetchSupplierSendAction!(restaurantId, "order-1"),
@@ -134,7 +137,7 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       unsubscribe();
     }
 
-    assert.equal(notifications.length, 12);
+    assert.equal(notifications.length, 15);
     assert.ok(notifications.every((deniedRestaurantId) => deniedRestaurantId === restaurantId));
   } finally {
     delete require.cache[repositoryPath];
