@@ -82,6 +82,7 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
     input({
       eventType: "correction",
       quantity: -100,
+      reasonCode: "receipt_correction",
       clientEventId: "device-event-2",
       idempotencyKey: "correction:event-1",
       supersedesEventId: "event-1"
@@ -93,6 +94,7 @@ test("requires corrections to supersede a same-tenant, same-item event once", ()
     candidate: input({
       eventType: "correction",
       quantity: -50,
+      reasonCode: "receipt_correction",
       clientEventId: "device-event-3",
       idempotencyKey: "correction:event-1:again",
       supersedesEventId: "event-1"
@@ -137,6 +139,7 @@ test("projects counts, receipts, usage, waste, and corrections in server sequenc
     input({
       eventType: "correction",
       quantity: -100,
+      reasonCode: "receipt_correction",
       clientEventId: "correction-1",
       idempotencyKey: "correction-1",
       supersedesEventId: "event-2"
