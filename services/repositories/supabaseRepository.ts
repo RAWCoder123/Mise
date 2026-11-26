@@ -2175,7 +2175,7 @@ export function createSupabaseRepository(): MiseRepository {
         query = query.eq("status", options.status);
       }
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       const memories = ((data ?? []) as PersistedRestaurantMemoryRow[]).map(
         restaurantMemoryFromPersistedRow
       );
@@ -2202,7 +2202,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_decision: decision,
         p_correction: correction ?? null
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       const row = (Array.isArray(data) ? data[0] : data) as PersistedRestaurantMemoryRow | null;
       if (!row) throw new Error("Memory decision returned an empty response.");
       const memory = restaurantMemoryFromPersistedRow(row);
@@ -2218,7 +2218,7 @@ export function createSupabaseRepository(): MiseRepository {
         .select("*")
         .eq("restaurant_id", restaurantId)
         .order("updated_at", { ascending: false });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       const rules = ((data ?? []) as PersistedAutonomyRuleRow[]).map(autonomyRuleFromPersistedRow);
       if (rules.some((rule) => rule.restaurantId !== restaurantId)) {
         throw new Error("Autonomy rules failed restaurant scope validation.");
@@ -2242,7 +2242,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_allowed_start_time: input.allowedStartTime ?? null,
         p_allowed_end_time: input.allowedEndTime ?? null
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       const row = (Array.isArray(data) ? data[0] : data) as PersistedAutonomyRuleRow | null;
       if (!row) throw new Error("Autonomy rule upsert returned an empty response.");
       const rule = autonomyRuleFromPersistedRow(row);

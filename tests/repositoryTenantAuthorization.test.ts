@@ -117,6 +117,22 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
         () => repository.listMiseActions(restaurantId),
         () => repository.fetchSupplierSendAction!(restaurantId, "order-1"),
         () => repository.decideMiseAction(restaurantId, "action-1", "approved"),
+        () => repository.listRestaurantMemories(restaurantId),
+        () =>
+          repository.updateRestaurantMemoryDecision(
+            restaurantId,
+            "memory-1",
+            "confirmed"
+          ),
+        () => repository.listAutonomyRules(restaurantId),
+        () =>
+          repository.upsertAutonomyRule(restaurantId, {
+            actionType: "create_task",
+            operationalCategory: "tasks",
+            maximumAutonomyLevel: 4,
+            requiresApproval: false,
+            enabled: true
+          }),
         () => repository.listRestaurantTasks(restaurantId),
         () =>
           repository.createRestaurantTask({
@@ -198,7 +214,7 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       unsubscribe();
     }
 
-    assert.equal(notifications.length, 29);
+    assert.equal(notifications.length, 33);
     assert.ok(notifications.every((deniedRestaurantId) => deniedRestaurantId === restaurantId));
   } finally {
     delete require.cache[repositoryPath];
