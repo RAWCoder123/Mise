@@ -211,6 +211,12 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "evidence" substring so blank/padded source
+  // reference failures settle as terminal outbox reasons instead of
+  // incomplete_evidence.
+  if (message.includes("source reference must be non-blank and unpadded")) {
+    return "invalid_source_reference_shape";
+  }
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
