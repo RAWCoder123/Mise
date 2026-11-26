@@ -9,6 +9,8 @@
  * vocabularies and rules stay in step.
  */
 
+import { validatePurchaseLineNormalizedItemKeyEvidence } from "./purchaseLineNormalizedItemKeyEvidence";
+
 export const PURCHASE_LINE_EVIDENCE_VERSION = "mise.purchase_line.v1" as const;
 export const PURCHASE_LINE_NORMALIZATION_VERSION =
   "mise.purchase_line_normalization.v1" as const;
@@ -438,6 +440,12 @@ export function normalizePurchaseLineInput(input: PurchaseLineInput): Normalized
     normalizationVersion,
     packSize: extractedPackSize
   } = normalizePurchaseLineDescription(rawItemDescription);
+  // Fail closed on padded keys so product ingest matches the append-only
+  // ledger tip. Soft-empty still nullifies via normalizePurchaseLineDescription.
+  // Hosted normalize_purchase_item_key still btrims.
+  if (validatePurchaseLineNormalizedItemKeyEvidence({ normalizedItemKey })) {
+    throw new Error("Normalized item key must be unpadded when present.");
+  }
   const quantity = optionalAmount(input.quantity, "Quantity", MAX_QUANTITY);
   const unitOfMeasure = optionalBoundedText(input.unitOfMeasure, "Unit of measure", 80);
   const unitPrice = optionalAmount(input.unitPrice, "Unit price", MAX_QUANTITY);
