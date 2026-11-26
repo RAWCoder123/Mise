@@ -211,6 +211,14 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "evidence" substring so transfer-location failures
+  // settle as terminal outbox reasons instead of incomplete_evidence.
+  if (message.includes("transfer events require from and to storage location")) {
+    return "transfer_requires_locations";
+  }
+  if (message.includes("transfer storage locations are invalid")) {
+    return "invalid_transfer_locations";
+  }
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
