@@ -211,6 +211,14 @@ function normalizeMetadata(value: unknown): Readonly<Record<string, unknown>> {
 }
 
 function rejectionReason(message: string) {
+  // Match before the generic "evidence" substring so other-reason note failures
+  // settle as terminal outbox reasons instead of incomplete_evidence.
+  if (message.includes("waste events with reason other require a note")) {
+    return "waste_other_requires_note";
+  }
+  if (message.includes("stockout events with reason other require a note")) {
+    return "stockout_other_requires_note";
+  }
   if (message.includes("canonical unit")) return "invalid_canonical_unit";
   if (message.includes("quantity")) return "invalid_quantity";
   if (message.includes("event type")) return "unsupported_event_type";
