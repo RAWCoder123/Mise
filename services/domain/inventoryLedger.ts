@@ -1,4 +1,5 @@
 import { COUNT_CLOCK_SKEW_TOLERANCE_MS, isTemporallyValidCount } from "./inventoryCountAuthority";
+import { validateTransferQuantityMovedEvidence } from "./inventoryTransferQuantityMovedEvidence";
 import type { CanonicalOperationalUnit } from "./operationalMapping";
 
 export type InventoryEventType =
@@ -191,6 +192,12 @@ function validateEventInput(input: InventoryEventInput, recordedAt: string) {
     return "invalid_quantity";
   }
   if (input.eventType === "stockout" && input.quantity !== 0) return "invalid_stockout_quantity";
+  // Station-transfer provenance requires a positive metadata.quantity_moved.
+  const transferQuantityMovedEvidence = validateTransferQuantityMovedEvidence({
+    eventType: input.eventType,
+    metadata: input.metadata
+  });
+  if (transferQuantityMovedEvidence) return transferQuantityMovedEvidence;
   return null;
 }
 
