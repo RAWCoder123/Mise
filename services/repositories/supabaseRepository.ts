@@ -1438,7 +1438,7 @@ export function createSupabaseRepository(): MiseRepository {
       const { data, error } = await client.rpc("list_recipe_authorities", {
         p_restaurant_id: restaurantId
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       if (!Array.isArray(data)) throw new Error("Recipe authority returned an invalid response.");
       return data.map(parseRecipeAuthorityState);
     },
@@ -1449,7 +1449,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_menu_item_id: menuItemId,
         p_expected_revision: expectedRevision
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return parseRecipeAuthorityState(data);
     },
 

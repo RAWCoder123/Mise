@@ -211,6 +211,8 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
           }),
         () => repository.fetchPurchaseRecommendations(restaurantId),
         () => repository.fetchPurchaseRecommendationAuthorities(restaurantId),
+        () => repository.fetchRecipeAuthorities(restaurantId),
+        () => repository.confirmRecipeComplete(restaurantId, "menu-item-1", 3),
         () => repository.fetchRecommendationHistory(restaurantId),
         () =>
           repository.updatePurchaseRecommendation(
@@ -570,6 +572,10 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
         repository.approvePurchaseRecommendation(restaurantId, "recommendation-1"),
         (error) => error === nonAuthorizationError
       );
+      await assert.rejects(
+        repository.fetchRecipeAuthorities(restaurantId),
+        (error) => error === nonAuthorizationError
+      );
       assert.equal(notifications.length, notificationsBeforeNonAuthorizationFailure);
     } finally {
       unsubscribe();
@@ -581,7 +587,7 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       3 + 1 + 1 + // planning data: result checks, planning-sales helper, mapping helper
       1; // verified provider mappings public method
     assert.equal(coreBundleDenialNotifications, 18);
-    assert.equal(notifications.length, 45 + coreBundleDenialNotifications);
+    assert.equal(notifications.length, 47 + coreBundleDenialNotifications);
     assert.ok(notifications.every((deniedRestaurantId) => deniedRestaurantId === restaurantId));
   } finally {
     delete require.cache[repositoryPath];
