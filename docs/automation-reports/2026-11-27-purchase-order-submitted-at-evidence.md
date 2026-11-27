@@ -26,9 +26,10 @@ count-session `submitted_at` CHECKs, and tip stacks #1263–#1314.
 
 ## Verification
 
-- `npm run typecheck`
-- `npm run security:static`
-- `npm run security:backend`
-- `npm run design:static`
-- focused `tests/purchaseOrderSubmittedAtEvidence.test.ts`
-- `npm test`
+- `npm run typecheck`: passed
+- `npm run security:static`: passed
+- `npm run security:backend`: passed
+- `npm run design:static`: passed
+- focused `tests/purchaseOrderSubmittedAtEvidence.test.ts`: 4/4 passed
+- `npm test`: 687 / 680 pass / 0 fail / 7 cancelled
+- Docker unavailable for `npm run supabase:test`
