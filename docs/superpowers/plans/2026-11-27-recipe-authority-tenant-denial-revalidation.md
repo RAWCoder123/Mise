@@ -28,7 +28,7 @@
 - Consumes: `throwRepositoryError(error: unknown, restaurantId: string | null): never`
 - Produces: unchanged recipe-authority repository contracts with tenant-denial notification.
 
-- [ ] **Step 1: Write the failing runtime regression**
+- [x] **Step 1: Write the failing runtime regression**
 
 Add the two live recipe-authority calls to the direct authorization-operation
 table:
@@ -55,7 +55,7 @@ await assert.rejects(
 );
 ```
 
-- [ ] **Step 2: Run the focused test and observe red**
+- [x] **Step 2: Run the focused test and observe red**
 
 Run:
 
@@ -67,7 +67,7 @@ Expected: the first newly covered recipe-authority denial rejects with the
 exact repository error but fails the one-new-notification assertion because no
 tenant-denial notification was emitted.
 
-- [ ] **Step 3: Route both RPC failures through the shared boundary**
+- [x] **Step 3: Route both RPC failures through the shared boundary**
 
 In `services/repositories/supabaseRepository.ts`, change both scoped error
 branches from:
@@ -84,7 +84,7 @@ if (error) throwRepositoryError(error, restaurantId);
 
 Apply this only to `fetchRecipeAuthorities` and `confirmRecipeComplete`.
 
-- [ ] **Step 4: Run focused and proportional verification**
+- [x] **Step 4: Run focused and proportional verification**
 
 Run:
 
@@ -102,7 +102,7 @@ whitespace validation pass. If the known unrelated recalculation timer
 cancellations reproduce, record them accurately and confirm they match the
 existing PR #1183 ownership before continuing.
 
-- [ ] **Step 5: Commit the narrow implementation**
+- [x] **Step 5: Commit the narrow implementation**
 
 ```bash
 git add docs/superpowers/plans/2026-11-27-recipe-authority-tenant-denial-revalidation.md \
