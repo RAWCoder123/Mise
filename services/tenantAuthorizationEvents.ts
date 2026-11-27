@@ -27,6 +27,8 @@ export function isTenantAuthorizationError(error: unknown) {
     status === 403 ||
     code === "42501" ||
     code === "PGRST301" ||
+    code === "PGRST302" ||
+    code === "PGRST303" ||
     /permission denied|access denied|not authenticated|invalid or expired user session/i.test(message)
   );
 }

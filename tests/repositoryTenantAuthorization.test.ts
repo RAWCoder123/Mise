@@ -22,6 +22,9 @@ test("tenant authorization errors recognize every supported denial shape", () =>
     { context: { status: 403 } },
     { code: "42501" },
     { code: "PGRST301" },
+    { code: "PGRST302", message: "Anonymous access is disabled" },
+    { code: "PGRST303", message: "JWT expired" },
+    { code: "PGRST303", message: "JWT not yet valid" },
     { message: "Permission denied for relation inventory_items" },
     { message: "Access denied for this restaurant" },
     { message: "Not authenticated" },
@@ -35,6 +38,7 @@ test("tenant authorization errors recognize every supported denial shape", () =>
     new Error("temporary database timeout"),
     { status: 500 },
     { code: "23505" },
+    { code: "PGRST300", message: "JWT secret is missing" },
     { message: "not authorized for this operation" }
   ]) {
     assert.equal(isTenantAuthorizationError(error), false);
@@ -172,10 +176,14 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       notifications.push(deniedRestaurantId);
     });
     const repository = createSupabaseRepository();
-    const assertAuthorizationNotification = async (operation: () => Promise<unknown>) => {
+    const assertAuthorizationNotification = async (
+      operation: () => Promise<unknown>,
+      expectedError: unknown = permissionError
+    ) => {
       const notificationsBeforeOperation = notifications.length;
-      await assert.rejects(operation(), (error) => error === permissionError);
+      await assert.rejects(operation(), (error) => error === expectedError);
       assert.equal(notifications.length, notificationsBeforeOperation + 1);
+      assert.equal(notifications[notifications.length - 1], restaurantId);
     };
 
     try {
@@ -235,6 +243,14 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       ]) {
         await assertAuthorizationNotification(operation);
       }
+
+      const expiredJwtError = { code: "PGRST303", message: "JWT expired" };
+      repositoryError = expiredJwtError;
+      await assertAuthorizationNotification(
+        () => repository.fetchSupplierOrders(restaurantId),
+        expiredJwtError
+      );
+      repositoryError = permissionError;
 
       allowPosIntegrationRows = true;
       await assertAuthorizationNotification(() => repository.fetchPOSStatus(restaurantId));
@@ -536,7 +552,7 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       3 + 1 + 1 + // planning data: result checks, planning-sales helper, mapping helper
       1; // verified provider mappings public method
     assert.equal(coreBundleDenialNotifications, 18);
-    assert.equal(notifications.length, 37 + coreBundleDenialNotifications);
+    assert.equal(notifications.length, 38 + coreBundleDenialNotifications);
     assert.ok(notifications.every((deniedRestaurantId) => deniedRestaurantId === restaurantId));
   } finally {
     delete require.cache[repositoryPath];
