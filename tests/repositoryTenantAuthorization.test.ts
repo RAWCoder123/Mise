@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import test from "node:test";
-import { isTenantAuthorizationError } from "../services/tenantAuthorizationEvents";
+import {
+  isTenantAuthorizationError,
+  subscribeToTenantAuthorizationDenials,
+  throwRepositoryError
+} from "../services/tenantAuthorizationEvents";
 
 const require = createRequire(import.meta.url);
 const restaurantId = "restaurant-tenant-denial";
@@ -34,6 +38,45 @@ test("tenant authorization errors recognize every supported denial shape", () =>
     { message: "not authorized for this operation" }
   ]) {
     assert.equal(isTenantAuthorizationError(error), false);
+  }
+});
+
+test("tenant authorization notification isolates listener and telemetry failures", () => {
+  const listenerError = new Error("listener failed");
+  const telemetryError = new Error("telemetry failed");
+  const notifications: Array<string | null> = [];
+  let reportedError: unknown;
+  const originalWarn = console.warn;
+  const originalSentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
+  const originalAppEnv = process.env.EXPO_PUBLIC_APP_ENV;
+  delete process.env.EXPO_PUBLIC_SENTRY_DSN;
+  process.env.EXPO_PUBLIC_APP_ENV = "test";
+  console.warn = (...args: unknown[]) => {
+    reportedError = args[1];
+    throw telemetryError;
+  };
+  const unsubscribeFailing = subscribeToTenantAuthorizationDenials(() => {
+    throw listenerError;
+  });
+  const unsubscribeHealthy = subscribeToTenantAuthorizationDenials((deniedRestaurantId) => {
+    notifications.push(deniedRestaurantId);
+  });
+
+  try {
+    assert.throws(
+      () => throwRepositoryError(permissionError, restaurantId),
+      (error) => error === permissionError
+    );
+    assert.deepEqual(notifications, [restaurantId]);
+    assert.equal(reportedError, listenerError);
+  } finally {
+    unsubscribeHealthy();
+    unsubscribeFailing();
+    console.warn = originalWarn;
+    if (originalSentryDsn === undefined) delete process.env.EXPO_PUBLIC_SENTRY_DSN;
+    else process.env.EXPO_PUBLIC_SENTRY_DSN = originalSentryDsn;
+    if (originalAppEnv === undefined) delete process.env.EXPO_PUBLIC_APP_ENV;
+    else process.env.EXPO_PUBLIC_APP_ENV = originalAppEnv;
   }
 });
 

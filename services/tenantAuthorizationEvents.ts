@@ -1,3 +1,5 @@
+import { captureMiseError } from "./telemetry";
+
 type TenantAuthorizationListener = (restaurantId: string | null) => void;
 
 const listeners = new Set<TenantAuthorizationListener>();
@@ -30,7 +32,20 @@ export function isTenantAuthorizationError(error: unknown) {
 }
 
 export function notifyTenantAuthorizationDenied(restaurantId: string | null = null) {
-  for (const listener of listeners) listener(restaurantId);
+  for (const listener of listeners) {
+    try {
+      listener(restaurantId);
+    } catch (error) {
+      try {
+        captureMiseError(error, {
+          operation: "tenant_authorization_denial_listener",
+          restaurant_id: restaurantId ?? undefined
+        });
+      } catch {
+        // Error reporting must never block tenant-denial recovery.
+      }
+    }
+  }
 }
 
 export function subscribeToTenantAuthorizationDenials(listener: TenantAuthorizationListener) {
