@@ -1461,7 +1461,7 @@ export function createSupabaseRepository(): MiseRepository {
         .eq("inventory_item_id", itemId)
         .eq("status", "pending")
         .maybeSingle();
-      if (existing.error) throw existing.error;
+      if (existing.error) throwRepositoryError(existing.error, restaurantId);
       return existing.data
         ? normalizePurchaseRecommendation(
           withCurrentSupplierDisplay(existing.data, "Purchase recommendation") as unknown as PurchaseRecommendation
@@ -1477,7 +1477,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_reason: input.reason,
         p_urgency: input.urgency
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, input.restaurant_id);
       return normalizePurchaseRecommendation(data as PurchaseRecommendation);
     },
 
@@ -1536,7 +1536,7 @@ export function createSupabaseRepository(): MiseRepository {
         .eq("id", recommendationId)
         .select("*")
         .single();
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return normalizePurchaseRecommendation(data as PurchaseRecommendation);
     },
 
@@ -1546,7 +1546,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_recommendation_id: recommendationId,
         p_recommended_quantity: recommendedQuantity ?? null
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return parseRecommendationWorkflowResponse(data);
     },
 
@@ -1555,7 +1555,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_restaurant_id: restaurantId,
         p_recommendation_id: recommendationId
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return parseRecommendationWorkflowResponse(data);
     },
 
@@ -1564,7 +1564,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_restaurant_id: restaurantId,
         p_recommendation_id: recommendationId
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return parseRecommendationWorkflowResponse(data);
     },
 
@@ -1581,7 +1581,7 @@ export function createSupabaseRepository(): MiseRepository {
         p_restaurant_id: restaurantId,
         p_event_id: eventId
       });
-      if (error) throw error;
+      if (error) throwRepositoryError(error, restaurantId);
       return normalizePurchaseDecisionEvent(data as Record<string, unknown>);
     },
 

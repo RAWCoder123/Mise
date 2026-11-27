@@ -87,7 +87,7 @@ test("tenant authorization notification isolates listener and telemetry failures
 function settledQuery(data: unknown, error: unknown) {
   const result = { data, error };
   const query: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "order", "limit", "gte", "lte", "in"]) {
+  for (const method of ["select", "update", "eq", "order", "limit", "gte", "lte", "in"]) {
     query[method] = () => query;
   }
   query.maybeSingle = () => Promise.resolve(result);
@@ -194,10 +194,35 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
         () => repository.fetchAiInsights(restaurantId),
         () => repository.fetchInsights(restaurantId),
         () => repository.fetchInventoryItems(restaurantId),
+        () => repository.findPendingRecommendation(restaurantId, "item-1"),
+        () =>
+          repository.createPurchaseRecommendation({
+            restaurant_id: restaurantId,
+            inventory_item_id: "item-1",
+            item_name: "Chicken thighs",
+            supplier_id: "supplier-1",
+            supplier_name: "Metro Produce",
+            recommended_quantity: 18,
+            unit: "lb",
+            reason: "Projected stockout before dinner",
+            urgency: "high",
+            status: "pending",
+            supplier_order_id: null
+          }),
         () => repository.fetchPurchaseRecommendations(restaurantId),
         () => repository.fetchPurchaseRecommendationAuthorities(restaurantId),
         () => repository.fetchRecommendationHistory(restaurantId),
+        () =>
+          repository.updatePurchaseRecommendation(
+            restaurantId,
+            "recommendation-1",
+            { recommended_quantity: 19 }
+          ),
+        () => repository.approvePurchaseRecommendation(restaurantId, "recommendation-1"),
+        () => repository.dismissPurchaseRecommendation(restaurantId, "recommendation-1"),
+        () => repository.undoPurchaseRecommendationAction(restaurantId, "recommendation-1"),
         () => repository.fetchPurchaseDecisionPatterns(restaurantId),
+        () => repository.excludePurchaseDecisionEvent(restaurantId, "event-1"),
         () => repository.fetchPurchaseLines(restaurantId),
         () => repository.fetchPurchaseLineNetByItem(restaurantId),
         () => repository.fetchSupplierDeliveryHistory(restaurantId),
@@ -541,6 +566,10 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
         repository.fetchInventoryItems(restaurantId),
         (error) => error === nonAuthorizationError
       );
+      await assert.rejects(
+        repository.approvePurchaseRecommendation(restaurantId, "recommendation-1"),
+        (error) => error === nonAuthorizationError
+      );
       assert.equal(notifications.length, notificationsBeforeNonAuthorizationFailure);
     } finally {
       unsubscribe();
@@ -552,7 +581,7 @@ test("restaurant-scoped authorization failures notify the active restaurant befo
       3 + 1 + 1 + // planning data: result checks, planning-sales helper, mapping helper
       1; // verified provider mappings public method
     assert.equal(coreBundleDenialNotifications, 18);
-    assert.equal(notifications.length, 38 + coreBundleDenialNotifications);
+    assert.equal(notifications.length, 45 + coreBundleDenialNotifications);
     assert.ok(notifications.every((deniedRestaurantId) => deniedRestaurantId === restaurantId));
   } finally {
     delete require.cache[repositoryPath];
